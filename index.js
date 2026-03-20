@@ -15,6 +15,7 @@ const { createNotifier } = require('./controller/notify.service');
 const { addToBlackList } = require('./controller/function-calling.js');
 const { processActiveCampaigns } = require('./services/marketing.service.js');
 const mongoose = require('mongoose');
+const Campaign = require('./models/campaignModel');
 
 
 // --- Configuración Básica ---

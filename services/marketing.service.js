@@ -56,8 +56,6 @@ async function processActiveCampaigns(clientWp) {
     if (!isWorkingHours()) return;
 
     console.log("📢 Buscando campañas pendientes...");
-    console.log("📢 Campaign....");
-    console.log(Campaign);
 
     const campaign = await Campaign.findOne({
         status: 'pending', 
@@ -129,11 +127,14 @@ async function processActiveCampaigns(clientWp) {
                 // USAMOS LA NUEVA FUNCIÓN ROBUSTA
                 const jid = await getWhatsAppId(clientWp, contact.phone);
 
-                if (campaign.media_url) {
+                // Prioridad: imagen del contacto > imagen de la campaña
+                const mediaUrl = (contact.media_url && contact.media_url.trim()) || campaign.media_url;
+
+                if (mediaUrl) {
                      const { MessageMedia } = require('whatsapp-web.js');
-                     const media = await MessageMedia.fromUrl(campaign.media_url);
+                     const media = await MessageMedia.fromUrl(mediaUrl);
                      let options = { caption: finalMessage };
-                     if (campaign.media_url.toLowerCase().endsWith('.pdf')) options.sendMediaAsDocument = true;
+                     if (mediaUrl.toLowerCase().endsWith('.pdf')) options.sendMediaAsDocument = true;
                      
                      await clientWp.sendMessage(jid, media, options);
                 } else {

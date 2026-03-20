@@ -1,28 +1,31 @@
 FROM node:20-slim
 
-# Instalamos Chromium y las dependencias necesarias
+# Instalamos Chromium y TODAS las librerías de sistema necesarias
 RUN apt-get update && apt-get install -y \
     chromium \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
-    fonts-freefont-ttf \
-    libxss1 \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libadwaita-1-0 \
+    fonts-liberation \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Variable de entorno para que Puppeteer sepa dónde está el navegador
+# Definimos la ruta del navegador para que Puppeteer no se pierda
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 
 WORKDIR /app
-
 COPY package*.json ./
-# Instalamos omitiendo la descarga del navegador interno de Puppeteer para ahorrar espacio
-RUN npm install --omit=dev
-
+RUN npm install
 COPY . .
 
 EXPOSE 3000
 
+# Usamos el comando de inicio estándar
 CMD ["npm", "start"]

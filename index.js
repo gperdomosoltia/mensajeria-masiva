@@ -49,15 +49,15 @@ app.listen(PORT, () => console.log(`🌐 Server en puerto ${PORT}`));
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        executablePath: '/usr/bin/chromium', // Esta es la ruta en Linux/Docker
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
+            '--disable-dev-shm-usage', // Crucial para evitar errores de memoria en Docker
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process', // Ayuda a ahorrar RAM en Railway
+            '--single-process', 
             '--disable-gpu'
         ],
     }

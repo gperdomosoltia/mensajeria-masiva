@@ -27,6 +27,28 @@ const CACHE_DIR = path.join(__dirname, '.wwebjs_cache');
 
 if (!fs.existsSync(PUBLIC_IMAGE_DIR)) fs.mkdirSync(PUBLIC_IMAGE_DIR, { recursive: true });
 
+// --- Limpiar SingletonLock de Chromium (evita error en redeploys) ---
+const sessionBasePath = path.join(__dirname, '.wwebjs_auth');
+if (fs.existsSync(sessionBasePath)) {
+    const findAndRemoveLocks = (dir) => {
+        try {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    findAndRemoveLocks(fullPath);
+                } else if (entry.name === 'SingletonLock' || entry.name === 'SingletonCookie' || entry.name === 'SingletonSocket') {
+                    fs.unlinkSync(fullPath);
+                    console.log(`🔓 Lock eliminado: ${fullPath}`);
+                }
+            }
+        } catch (e) {
+            // Ignorar errores de permisos
+        }
+    };
+    findAndRemoveLocks(sessionBasePath);
+}
+
 // --- Servidor Express ---
 const app = express();
 app.use(express.json());

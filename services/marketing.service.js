@@ -17,7 +17,7 @@ function replaceVariables(template, contact) {
     text = text.replace(/\{\{name\}\}/gi, contact.name || ""); 
     text = text.replace(/\{\{empresa\}\}/gi, contact.empresa || "");
     text = text.replace(/Hola\s+,/gi, 'Hola,');
-    text = text.replace(/\s{2,}/g, ' ');
+    text = text.replace(/[^\S\n]{2,}/g, ' ');
     return text.trim();
 }
 

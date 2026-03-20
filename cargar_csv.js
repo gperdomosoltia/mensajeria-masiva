@@ -12,14 +12,19 @@ const CAMPAIGN_CONFIG = {
     id: CAMPAIGN_ID,
     name: "Campaña Masiva Mujer Raiz",
     client_id: 1,
-    message: `Hola {{name}}, soy Uma.
-Hoy quiero extenderte una invitación especial.
-La Alcaldía de Baruta e Infinito Positivo tienen el gusto de presentarte Mujer Raíz, un ecosistema diseñado para impulsar la formación, el desarrollo y la proyección empresarial de la mujer.
-Este martes 24 de marzo, en la Torre Gerais, en Las Mercedes, realizaremos su lanzamiento oficial, un espacio concebido para compartir la visión, el alcance y las oportunidades de articulación que este programa ofrece a aliados estratégicos, empresas e instituciones.
-Para tu comodidad, hemos dispuesto dos horarios:
-10:00 de la mañana y 4:00 de la tarde.
-Te invitamos a seleccionar el que mejor se adapte a tu agenda y confirmar tu asistencia.
-Será un gusto contar contigo.`,
+    message: `¡Hola {{name}}! 
+
+Te escribe Uma, de Mujer Raíz y hoy queremos invitarte a un evento especial.
+
+La Alcaldía de Baruta e Infinito Positivo presentan Mujer Raíz, un ecosistema para impulsar la formación, el desarrollo y la proyección empresarial de la mujer.  Será un encuentro para conocer la visión, el alcance y las oportunidades de articulación con aliados estratégicos, empresas e instituciones.
+
+📍La presentación será el martes 24 de marzo en la Torre Gerais de Las Mercedes.
+
+⏰ Para que puedas asistir diseñamos para tu comodidad dos horarios: 10:00 a.m. y 4:00 p.m. 
+
+Solo debes elegir el que mejor te convenga y confirma tu asistencia.
+
+Será un placer contar con tu asistencia`,
     media_url: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663324533207/OWWzfGziwqNUEUFq.png",
     personalizado: true,
     status: "pending",

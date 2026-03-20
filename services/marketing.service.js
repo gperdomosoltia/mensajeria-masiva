@@ -56,6 +56,8 @@ async function processActiveCampaigns(clientWp) {
     if (!isWorkingHours()) return;
 
     console.log("📢 Buscando campañas pendientes...");
+    console.log("📢 Campaign....");
+    console.log(Campaign);
 
     const campaign = await Campaign.findOne({
         status: 'pending', 

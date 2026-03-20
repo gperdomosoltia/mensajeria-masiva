@@ -47,17 +47,17 @@ app.listen(PORT, () => console.log(`🌐 Server en puerto ${PORT}`));
 
 // --- Cliente WhatsApp ---
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth(), // O la que estés usando
     puppeteer: {
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+        headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage', // Crucial para evitar errores de memoria en Docker
+            '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process', 
+            '--single-process', // Esto ayuda a evitar el error de Singleton en contenedores
             '--disable-gpu'
         ],
     }

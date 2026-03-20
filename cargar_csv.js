@@ -28,7 +28,7 @@ Será un placer contar con tu asistencia`,
     personalizado: true,
     status: "pending",
     batch_ids: [],
-    scheduled_at: new Date("2026-03-20T22:00:00.000Z"), // AJUSTAR: hora de envío (UTC). Suma 4h a Venezuela
+   scheduled_at: new Date("2026-03-20T22:10:00.000Z"),
     messages_per_block: 20,
     min_delay_between_messages: 5,
     max_delay_between_messages: 15,

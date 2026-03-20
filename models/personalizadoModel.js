@@ -5,6 +5,7 @@ const personalizadoSchema = new mongoose.Schema({
     name: { type: String, default: "" }, // Nombre de la persona (o vacío)
     empresa: { type: String, default: "" }, // Nombre de la empresa
     phone: { type: String, required: true }, // Número saneado (58412...)
+    media_url: { type: String, default: "" }, // URL de imagen personalizada por contacto
     process: { type: Boolean, default: false }, // Si ya se envió
     sent_at: { type: Date },
     error: { type: String },

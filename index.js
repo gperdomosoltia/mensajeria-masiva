@@ -49,8 +49,17 @@ app.listen(PORT, () => console.log(`🌐 Server en puerto ${PORT}`));
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        executablePath: '/usr/bin/google-chrome-stable' // Opcional si usas slim
+        executablePath: '/usr/bin/chromium', // Esta es la ruta en Linux/Docker
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process', // Ayuda a ahorrar RAM en Railway
+            '--disable-gpu'
+        ],
     }
 });
 

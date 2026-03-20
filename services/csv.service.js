@@ -38,40 +38,51 @@ function cleanPhoneNumber(rawPhone) {
     } else if (digits.startsWith('57')) {
          // Dejar números de Colombia (ej: 573...) si deseas permitirlos
          return digits;
+    } else if (digits.startsWith('1') && digits.length === 11) {
+         // Números de USA/Canadá (ej: 17865370526)
+         return digits;
     }
 
-    // 4. Validación final (Aceptamos 58 para Venezuela)
-    if (!digits.startsWith('584') && !digits.startsWith('57')) return null; 
+    // 4. Validación final (Aceptamos 58 para Venezuela, 57 para Colombia, 1 para USA)
+    if (!digits.startsWith('584') && !digits.startsWith('57') && !digits.startsWith('1')) return null; 
 
     return digits;
 }
 
 /**
- * Procesa el CSV con formato: Nombre, Empresa, Teléfono
+ * Procesa el CSV con formato: name, empresa, phone[, media_url]
+ * La columna media_url es opcional.
  */
 async function importContactsFromCSV(campaignId, csvContent) {
     const lines = csvContent.split(/\r?\n/);
     let count = 0;
-    const phonesSeen = new Set(); 
 
     console.log(`📂 Importando CSV para campaña ${campaignId}...`);
 
-    // Iteramos desde i=0 si no hay cabecera, o i=1 si la hay. 
-    // Como tu data tiene cabecera "name,empresa...", empezamos en 1.
+    // Detectar si el CSV tiene columna media_url (4 columnas en el header)
+    const header = lines[0].toLowerCase().trim();
+    const hasMediaUrl = header.includes('media_url');
+    if (hasMediaUrl) {
+        console.log(`📎 Detectada columna media_url en el CSV.`);
+    }
+
+    // Iteramos desde i=1 (saltamos cabecera)
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
 
         const columns = splitCSVLine(line);
         
-        // MAPEO DE COLUMNAS NUEVO:
+        // MAPEO DE COLUMNAS:
         // Col 0: Nombre
         // Col 1: Empresa
         // Col 2: Teléfono
+        // Col 3: media_url (opcional)
         
         let persona = columns[0] ? columns[0].trim() : "";
         let empresa = columns[1] ? columns[1].trim() : "";
-        const rawPhone = columns[2]; // El teléfono está en la 3ra columna (índice 2)
+        const rawPhone = columns[2];
+        const mediaUrl = columns[3] ? columns[3].trim() : "";
 
         // Limpieza de saltos de línea raros en nombres (ej: "Maria...\n")
         persona = persona.replace(/[\r\n]+/g, " ").trim();
@@ -79,14 +90,13 @@ async function importContactsFromCSV(campaignId, csvContent) {
         // Validar teléfono
         const cleanPhone = cleanPhoneNumber(rawPhone);
 
-        if (cleanPhone && !phonesSeen.has(cleanPhone)) {
-            phonesSeen.add(cleanPhone);
-
+        if (cleanPhone) {
             await Personalizado.create({
                 id: i, 
-                name: persona, // Puede estar vacío
+                name: persona,
                 empresa: empresa,
                 phone: cleanPhone,
+                media_url: mediaUrl,
                 process: false,
                 id_campaign: campaignId
             });

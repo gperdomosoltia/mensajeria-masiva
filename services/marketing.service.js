@@ -28,7 +28,7 @@ function isWorkingHours() {
     const hour = veDate.getHours();
 
     if (day === 0 /*|| day === 6*/) return false;
-    if (hour < 8 || hour >= 20) return false;
+    if (hour < 8 || hour >= 22) return false;
     return true;
 }
 

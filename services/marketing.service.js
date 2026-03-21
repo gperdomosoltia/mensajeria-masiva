@@ -59,7 +59,7 @@ async function processActiveCampaigns(clientWp) {
     console.log("📢 Buscando campañas pendientes...");
     const ahora = new Date();
 
-    const campaign = await Campaign.findOne({
+    const campaign2 = await Campaign.findOne({
         status: 'pending',
         $or: [
             // Opcion 1: Si la fecha está guardada correctamente como un Date de Mongo
@@ -70,10 +70,10 @@ async function processActiveCampaigns(clientWp) {
         ]
     }).sort({ createdAt: 1 });
     
-    // const campaign2 = await Campaign.findOne({
-    //     status: 'pending', 
-    //     scheduled_at: { $lte: new Date() }
-    // }).sort({ scheduled_at: 1 });
+    const campaign = await Campaign.findOne({
+        status: 'pending', 
+        scheduled_at: { $lte: new Date() }
+    }).sort({ scheduled_at: 1 });
 
     if (!campaign) {
         console.log("💤 Nada pendiente.");

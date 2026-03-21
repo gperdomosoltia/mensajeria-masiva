@@ -55,12 +55,21 @@ async function getWhatsAppId(clientWp, number) {
 async function processActiveCampaigns(clientWp) {
     if (!isWorkingHours()) return;
 
-    // 1. Traemos TODAS las pendientes
-    const campañasPendientes = await Campaign.find({ status: 'pending' }).sort({ createdAt: 1 });
-    
-    // 2. Filtramos con JavaScript puro (que sí entiende objetos de fecha)
     const ahora = new Date();
-    const campaign2 = campañasPendientes.find(c => new Date(c.scheduled_at) <= ahora);
+
+    const campaign2 = await Campaign.findOne({
+        status: 'pending',
+        $or: [
+            // Opcion 1: Si la fecha está guardada correctamente como un Date de Mongo
+            { scheduled_at: { $lte: ahora } },
+            
+            // Opcion 2: Si la fecha se guardó como un objeto con la propiedad "$date" (Tu caso actual)
+            { "scheduled_at.$date": { $lte: ahora.toISOString() } },
+
+            // Opcion 3: Si no le pusieron fecha (opcional, la toma inmediatamente)
+            { scheduled_at: { $exists: false } }
+        ]
+    }).sort({ createdAt: 1 }); // Ordenamos por la más antigua creada
     console.log("============================");
     console.log("campaign2");
     console.log(campaign2);

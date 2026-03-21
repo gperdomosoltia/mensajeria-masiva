@@ -91,6 +91,30 @@ async function getCompleteHistory(userId) {
     } catch (error) { return []; }
 }
 
+// 👇 NUEVA FUNCIÓN: Para guardar los mensajes en silencio con el teléfono real
+async function saveSilentMessage(data) {
+    try {
+        const nuevoMensaje = new History({
+            user: data.user,         
+            phone: data.phone,       // Guarda el número real
+            name: data.name,         // Guarda el nombre del usuario
+            message: data.message,   
+            type: data.type,         
+            status: data.status,     // Se guarda como 'ignored_by_bot'
+            read: false,             
+            date: new Date(),
+            dateFormat: new Date().toLocaleDateString('es-ES')
+        });
+
+        await nuevoMensaje.save();
+        return nuevoMensaje._id;
+    } catch (error) {
+        console.error("❌ Error guardando mensaje silencioso en Mongo:", error.message);
+        return null;
+    }
+}
+
+// 👇 SE EXPORTA LA NUEVA FUNCIÓN AL FINAL
 module.exports = {
     connectDB,
     disconnectDB,
@@ -103,5 +127,6 @@ module.exports = {
     updateSubscription,
     logHistory,
     updateHistoryEntry,
-    getCompleteHistory
+    getCompleteHistory,
+    saveSilentMessage 
 };

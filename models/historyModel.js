@@ -8,6 +8,16 @@ const historySchema = new mongoose.Schema({
         required: true,
         index: true
     },
+    // 👇 NUEVO CAMPO: Para guardar el teléfono real
+    phone: {
+        type: String,
+        required: false 
+    },
+    // 👇 NUEVO CAMPO: Para guardar el nombre de perfil de WhatsApp
+    name: {
+        type: String,
+        required: false
+    },
     message: {
         type: String,
         required: true
@@ -25,7 +35,7 @@ const historySchema = new mongoose.Schema({
         enum: ['bot', 'agent'],
         required: function() { return !!this.response; }
     },
-    type: { // ✅ CORREGIDO: El campo ahora se llama 'type'
+    type: { 
         type: String,
         required: false
     },

@@ -180,7 +180,10 @@ client.on('message', async msg => {
             }
         }
 
-        const userName = (await msg.getContact()).pushname || "Usuario";
+        // 👇 AQUI SACAMOS EL CONTACTO Y SU NÚMERO REAL
+        const contact = await msg.getContact();
+        const userName = contact.pushname || "Usuario";
+        const realPhone = contact.number || userId; // Extrae el número sin arrobas ni sufijos
         const chat = await msg.getChat();
 
         // 1. Procesar contenido
@@ -212,6 +215,18 @@ client.on('message', async msg => {
         // Ignorar comandos que empiezan con !
         if (messagePart.type === 'text' && messagePart.content.startsWith('!')) return;
 
+        // 👇 NUEVA LÍNEA: Guardar el mensaje y el teléfono en la base de datos
+        if (messagePart.content && messagePart.content.trim() !== '') {
+            await mongoController.saveSilentMessage({
+                user: userId,          
+                phone: realPhone,      // 📱 Aquí pasamos el teléfono real
+                name: userName,        
+                message: messagePart.content,
+                type: messagePart.originalMessageType || messagePart.type,
+                status: "ignored_by_bot" // Estado especial para saber que no se respondió
+            });
+        }
+
         // 2. Enviar a la Cola (Queue) -> OpenAI
         // =================================================================
         // 🛑 BOT APAGADO TEMPORALMENTE: Comentamos la cola de respuestas
@@ -231,7 +246,7 @@ client.on('message', async msg => {
         });
         */
        
-        console.log(`💬 Mensaje de ${userName} recibido, pero el bot de respuestas está pausado.`);
+        console.log(`💬 Mensaje de ${userName} (${realPhone}) guardado en BD. Bot pausado.`);
 
     } catch (err) {
         console.error(`❌ Error procesando mensaje de ${userId}:`, err);

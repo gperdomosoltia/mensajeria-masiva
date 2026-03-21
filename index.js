@@ -213,6 +213,10 @@ client.on('message', async msg => {
         if (messagePart.type === 'text' && messagePart.content.startsWith('!')) return;
 
         // 2. Enviar a la Cola (Queue) -> OpenAI
+        // =================================================================
+        // 🛑 BOT APAGADO TEMPORALMENTE: Comentamos la cola de respuestas
+        // =================================================================
+        /*
         queue.addMessageToQueue(chat, userId, userName, rawUserId, messagePart, async (to, reply, historyId, result) => {
             if (reply && reply.trim() !== '') {
                 await enviarMensajeWhatsapp(to, reply);
@@ -225,6 +229,9 @@ client.on('message', async msg => {
                 });
             }
         });
+        */
+       
+        console.log(`💬 Mensaje de ${userName} recibido, pero el bot de respuestas está pausado.`);
 
     } catch (err) {
         console.error(`❌ Error procesando mensaje de ${userId}:`, err);

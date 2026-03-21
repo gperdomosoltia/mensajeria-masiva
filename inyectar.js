@@ -50,8 +50,8 @@ async function inyectarCampana() {
             max_delay_between_blocks: 600,
             
             // Mantenemos tu progreso de envío actual
-            total_sent: 50,
-            total_failed: 9
+            total_sent: 64,
+            total_failed: 12
         });
 
         await nuevaCampana.save();

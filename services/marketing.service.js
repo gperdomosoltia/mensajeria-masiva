@@ -84,6 +84,7 @@ async function processActiveCampaigns(clientWp) {
             }
         }
         console.log(`🚨 ¡Fecha scheduled_at . Tipo de dato en BD: ${typeof c.scheduled_at}`);
+        console.log(`🚨 ¡Fecha ahora . Tipo de dato en BD: ${typeof ahora}`);
         
         // 3. Veredicto
         if (motivosDeRechazo.length === 0) {

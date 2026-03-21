@@ -83,7 +83,8 @@ async function processActiveCampaigns(clientWp) {
                 motivosDeRechazo.push(`   * Fecha de la BD (UTC): ${c.scheduled_at.toISOString()}`);
             }
         }
-
+        console.log(`🚨 ¡Fecha scheduled_at . Tipo de dato en BD: ${typeof c.scheduled_at}`);
+        
         // 3. Veredicto
         if (motivosDeRechazo.length === 0) {
             console.log(`   ✅ Esta campaña CUMPLE todos los requisitos. La consulta original debería atraparla.`);

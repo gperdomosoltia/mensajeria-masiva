@@ -115,6 +115,19 @@ async function processActiveCampaigns(clientWp) {
         console.log(`📝 Procesando ${pendientes.length} contactos personalizados.`);
         let templateVariant = await paraphraseMessage(campaign.message);
         let messagesInCurrentBlock = 0;
+        
+        console.log('================================')
+        console.log('================================')
+        console.log('templateVariant')
+        console.log(templateVariant)
+        console.log('================================')
+        console.log('messagesInCurrentBlock')
+        console.log(messagesInCurrentBlock)
+        console.log('================================')
+        console.log('campaign.messages_per_block')
+        console.log(campaign.messages_per_block)
+        console.log('================================')
+        console.log('================================')
 
         for (const contact of pendientes) {
             if (await checkStopAndSave()) return;

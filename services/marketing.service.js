@@ -55,46 +55,16 @@ async function getWhatsAppId(clientWp, number) {
 async function processActiveCampaigns(clientWp) {
     if (!isWorkingHours()) return;
 
-    const todasLasCampanas = await Campaign.find({});
-    const ahora = new Date();
+    // 1. Traemos TODAS las pendientes
+    const campañasPendientes = await Campaign.find({ status: 'pending' }).sort({ createdAt: 1 });
     
-    console.log(`\n🔍 DEBUG: Encontradas ${todasLasCampanas.length} campañas en la base de datos.`);
-    console.log(`⏱️ Hora actual del sistema (UTC): ${ahora.toISOString()}`);
-    console.log(`⏱️ Hora actual del sistema (Local): ${ahora.toLocaleString()}`);
-
-    todasLasCampanas.forEach(c => {
-        console.log(`\n👉 Evaluando campaña ID: ${c.id || c._id} | Nombre: "${c.name}"`);
-        let motivosDeRechazo = [];
-
-        // 1. Evaluación del Status
-        if (c.status !== 'pending') {
-            motivosDeRechazo.push(`Status incorrecto. Tiene "${c.status}", pero se requiere exactamente "pending".`);
-        }
-
-        // 2. Evaluación de la Fecha
-        if (!c.scheduled_at) {
-             motivosDeRechazo.push(`No tiene una fecha configurada en el campo 'scheduled_at'.`);
-        } else {
-            // Comparamos si la fecha de la campaña es MAYOR a la fecha actual (está en el futuro)
-            if (c.scheduled_at > ahora) {
-                const diferenciaMs = c.scheduled_at.getTime() - ahora.getTime();
-                const diferenciaHoras = (diferenciaMs / (1000 * 60 * 60)).toFixed(2);
-                motivosDeRechazo.push(`Programada para el FUTURO. Faltan ${diferenciaHoras} horas para que se active.`);
-                motivosDeRechazo.push(`   * Fecha de la BD (UTC): ${c.scheduled_at.toISOString()}`);
-            }
-        }
-        console.log(`🚨 ¡Fecha scheduled_at . Tipo de dato en BD: ${typeof c.scheduled_at}`);
-        console.log(`🚨 ¡Fecha ahora . Tipo de dato en BD: ${typeof ahora}`);
-        
-        // 3. Veredicto
-        if (motivosDeRechazo.length === 0) {
-            console.log(`   ✅ Esta campaña CUMPLE todos los requisitos. La consulta original debería atraparla.`);
-        } else {
-            console.log(`   ❌ IGNORADA POR:`);
-            motivosDeRechazo.forEach(motivo => console.log(`      - ${motivo}`));
-        }
-    });
-    console.log(`\n=========================================================\n`);
+    // 2. Filtramos con JavaScript puro (que sí entiende objetos de fecha)
+    const ahora = new Date();
+    const campaign2 = campañasPendientes.find(c => new Date(c.scheduled_at) <= ahora);
+    console.log("============================");
+    console.log("campaign2");
+    console.log(campaign2);
+    console.log("============================");
 
     console.log("📢 Buscando campañas pendientes...");
 

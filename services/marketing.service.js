@@ -55,32 +55,25 @@ async function getWhatsAppId(clientWp, number) {
 async function processActiveCampaigns(clientWp) {
     if (!isWorkingHours()) return;
 
+    
+    console.log("📢 Buscando campañas pendientes...");
     const ahora = new Date();
 
-    const campaign2 = await Campaign.findOne({
+    const campaign = await Campaign.findOne({
         status: 'pending',
         $or: [
             // Opcion 1: Si la fecha está guardada correctamente como un Date de Mongo
             { scheduled_at: { $lte: ahora } },
             
             // Opcion 2: Si la fecha se guardó como un objeto con la propiedad "$date" (Tu caso actual)
-            { "scheduled_at.$date": { $lte: ahora.toISOString() } },
-
-            // Opcion 3: Si no le pusieron fecha (opcional, la toma inmediatamente)
-            { scheduled_at: { $exists: false } }
+            { "scheduled_at.$date": { $lte: ahora.toISOString() } }
         ]
-    }).sort({ createdAt: 1 }); // Ordenamos por la más antigua creada
-    console.log("============================");
-    console.log("campaign2");
-    console.log(campaign2);
-    console.log("============================");
-
-    console.log("📢 Buscando campañas pendientes...");
-
-    const campaign = await Campaign.findOne({
-        status: 'pending', 
-        scheduled_at: { $lte: new Date() }
-    }).sort({ scheduled_at: 1 });
+    }).sort({ createdAt: 1 });
+    
+    // const campaign2 = await Campaign.findOne({
+    //     status: 'pending', 
+    //     scheduled_at: { $lte: new Date() }
+    // }).sort({ scheduled_at: 1 });
 
     if (!campaign) {
         console.log("💤 Nada pendiente.");

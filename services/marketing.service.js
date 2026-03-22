@@ -26,6 +26,12 @@ function isWorkingHours() {
     const veDate = new Date(veTimeStr);
     const day = veDate.getDay();
     const hour = veDate.getHours();
+    console.log('=======================')
+    console.log('day')
+    console.log(day)
+    console.log('hour')
+    console.log(hour)
+    console.log('=======================')
 
     if (day === 0 /*|| day === 6*/) return false;
     if (hour < 8 || hour >= 22) return false;

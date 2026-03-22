@@ -33,7 +33,7 @@ function isWorkingHours() {
     console.log(hour)
     console.log('=======================')
 
-    if (day === 0 /*|| day === 6*/) return false;
+    // if (day === 0 /*|| day === 6*/) return false;
     if (hour < 8 || hour >= 22) return false;
     return true;
 }

@@ -165,7 +165,7 @@ client.on('message', async msg => {
     try {
         processingUsers.add(rawUserId);
 
-        // --- LÓGICA BOT CLIENT ---
+        // --- LÓGICA BOT CLIENT (Mantenida) ---
         const botConfig = await mongoController.getBotClientConfig();
         
         // Si no hay config o el bot está apagado globalmente
@@ -173,14 +173,17 @@ client.on('message', async msg => {
         
         // Verificación de Blacklist
         if (mongoController.isUserBlacklisted(userId, botConfig)) {
+            // Si es el agente probando, lo dejamos pasar, si no, retornamos
             if (rawUserId !== process.env.AGENTE) {
                 console.log(`🚫 Usuario ${userId} en lista negra.`);
                 return;
             }
         }
 
+        // 👇 AQUI SACAMOS EL CONTACTO Y SU NÚMERO REAL
         const contact = await msg.getContact();
         const userName = contact.pushname || "Usuario";
+        const realPhone = contact.number || userId; // Extrae el número sin arrobas ni sufijos
         const chat = await msg.getChat();
 
         // 1. Procesar contenido
@@ -212,10 +215,23 @@ client.on('message', async msg => {
         // Ignorar comandos que empiezan con !
         if (messagePart.type === 'text' && messagePart.content.startsWith('!')) return;
 
+        // 👇 NUEVA LÍNEA: Guardar el mensaje y el teléfono en la base de datos
+        if (messagePart.content && messagePart.content.trim() !== '') {
+            await mongoController.saveSilentMessage({
+                user: userId,          
+                phone: realPhone,      // 📱 Aquí pasamos el teléfono real
+                name: userName,        
+                message: messagePart.content,
+                type: messagePart.originalMessageType || messagePart.type,
+                status: "ignored_by_bot" // Estado especial para saber que no se respondió
+            });
+        }
+
         // 2. Enviar a la Cola (Queue) -> OpenAI
         // =================================================================
-        // 🟢 BOT ENCENDIDO: La IA vuelve a responder
+        // 🛑 BOT APAGADO TEMPORALMENTE: Comentamos la cola de respuestas
         // =================================================================
+        /*
         queue.addMessageToQueue(chat, userId, userName, rawUserId, messagePart, async (to, reply, historyId, result) => {
             if (reply && reply.trim() !== '') {
                 await enviarMensajeWhatsapp(to, reply);
@@ -228,6 +244,9 @@ client.on('message', async msg => {
                 });
             }
         });
+        */
+       
+        console.log(`💬 Mensaje de ${userName} (${realPhone}) guardado en BD. Bot pausado.`);
 
     } catch (err) {
         console.error(`❌ Error procesando mensaje de ${userId}:`, err);

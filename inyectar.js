@@ -31,7 +31,7 @@ async function inyectarCampana() {
         // });
 
         const nuevaCampana = new Campaign({
-            id: 20,
+            id: 25,
             name: "Campaña Masiva Mujer Raiz",
             client_id: 1,
             message: "¡Hola {{name}}! \nTe escribe Uma, de Mujer Raíz y hoy queremos invitarte a un evento especial.\n\nLa Alcaldía de Baruta e Infinito Positivo presentan Mujer Raíz, un ecosistema para impulsar la formación, el desarrollo y la proyección empresarial de la mujer. Será un encuentro para conocer la visión, el alcance y las oportunidades de articulación con aliados estratégicos, empresas e instituciones.\n\n📍La presentación será el martes 24 de marzo en la Torre Gerais de Las Mercedes.\n\n⏰ Para que puedas asistir diseñamos para tu comodidad dos horarios: 10:00 a.m. y 4:00 p.m. \n\nSolo debes elegir el que mejor te convenga y confirma tu asistencia.\n\nSerá un placer contar con tu asistencia",
@@ -50,12 +50,12 @@ async function inyectarCampana() {
             max_delay_between_blocks: 600,
             
             // Mantenemos tu progreso de envío actual
-            total_sent: 95,
-            total_failed: 21
+            total_sent: 0,
+            total_failed: 0
         });
 
         await nuevaCampana.save();
-        console.log('✅ Campaña 11 insertada con formato de Fecha nativo perfecto.');
+        console.log('✅ Campaña insertada con formato de Fecha nativo perfecto.');
         
         process.exit(0);
     } catch (error) {

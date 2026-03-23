@@ -6,7 +6,7 @@ const { createConversation } = require('../services/ai/conversations');
 const { respondWithConversation } = require('../services/ai/respond');
 
 const userMessageQueues = new Map();
-const QUEUE_TIMEOUT_MS = 30000; // 90 segundos
+const QUEUE_TIMEOUT_MS = 5000; // 5 segundos
 
 function getTextualRepresentationForHistory(queuedParts) {
     if (!queuedParts || queuedParts.length === 0) return "[COLA VACÍA]";

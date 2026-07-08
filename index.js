@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./diag.js'); // TEMP DIAGNOSTIC — remove after capturing chromium failure
 const fs = require('fs');
 const path = require('path');
 const express = require('express');

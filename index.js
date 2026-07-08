@@ -70,7 +70,10 @@ app.listen(PORT, () => console.log(`🌐 Server en puerto ${PORT}`));
 
 // --- Cliente WhatsApp ---
 const client = new Client({
-    authStrategy: new LocalAuth(), // O la que estés usando
+    // clientId nuevo: fuerza un perfil de navegador limpio. El perfil viejo lo creó
+    // el Chromium anterior y es incompatible con el Chrome nuevo (la página de WhatsApp
+    // se recarga durante la inyección). Requiere re-escanear el QR una vez.
+    authStrategy: new LocalAuth({ clientId: 'chrome-cft' }),
     // Fija la versión de WhatsApp Web: la versión "live" rompe la inyección de
     // whatsapp-web.js ("Execution context was destroyed"). ponytail: versión fija,
     // actualizar el número si WhatsApp vuelve a romper la inyección.

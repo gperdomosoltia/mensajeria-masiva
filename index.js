@@ -79,8 +79,6 @@ const client = new Client({
             '--disable-dev-shm-usage',
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
-            '--no-zygote',
-            '--single-process', // Esto ayuda a evitar el error de Singleton en contenedores
             '--disable-gpu'
         ],
     }

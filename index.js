@@ -71,6 +71,13 @@ app.listen(PORT, () => console.log(`🌐 Server en puerto ${PORT}`));
 // --- Cliente WhatsApp ---
 const client = new Client({
     authStrategy: new LocalAuth(), // O la que estés usando
+    // Fija la versión de WhatsApp Web: la versión "live" rompe la inyección de
+    // whatsapp-web.js ("Execution context was destroyed"). ponytail: versión fija,
+    // actualizar el número si WhatsApp vuelve a romper la inyección.
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1040426045-alpha.html',
+    },
     puppeteer: {
         headless: true,
         args: [

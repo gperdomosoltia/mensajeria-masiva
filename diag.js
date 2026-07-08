@@ -1,20 +1,28 @@
-// Diagnostic: run chromium directly to capture the REAL failure reason.
-// whatsapp-web.js/puppeteer swallow chromium's fatal stderr. This does not.
+// Diagnostic: capture chromium's REAL failure with exit signal (no head piping).
+const { spawnSync } = require('child_process');
 const { execSync } = require('child_process');
-const run = (label, cmd) => {
+
+const show = (label, cmd) => {
     console.log(`\n===== ${label} =====`);
-    try {
-        console.log(execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }));
-    } catch (e) {
-        console.log('EXIT STATUS:', e.status, 'SIGNAL:', e.signal);
-        console.log('STDOUT:', e.stdout);
-        console.log('STDERR:', e.stderr);
-    }
+    try { console.log(execSync(cmd, { encoding: 'utf8' })); }
+    catch (e) { console.log('ERR status:', e.status, 'signal:', e.signal, '\nout:', e.stdout, '\nerr:', e.stderr); }
 };
 
-run('CHROMIUM PATH', 'which chromium; ls -la /usr/bin/chromium*');
-run('CHROMIUM VERSION', '/usr/bin/chromium --version');
-run('LDD MISSING LIBS', 'ldd /usr/bin/chromium 2>&1 | grep "not found" || echo "no missing libs"');
-run('FREE MEMORY', 'cat /proc/meminfo | head -3; echo "---cgroup limit---"; cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || echo unknown');
-run('HEADLESS LAUNCH (real stderr)', '/usr/bin/chromium --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom about:blank 2>&1 | head -50');
+show('WRAPPER CONTENTS', 'cat /usr/bin/chromium');
+show('REAL BINARY SEARCH', 'ls -la /usr/lib/chromium/ 2>&1 | head -20; echo "---"; find / -name "chrome" -o -name "chromium" 2>/dev/null | grep -vE "wwebjs|node_modules" | head');
+
+// Launch real binary directly, capture exact signal/code + full stderr (NO pipe).
+const launch = (label, bin, args) => {
+    console.log(`\n===== ${label}: ${bin} =====`);
+    const r = spawnSync(bin, args, { encoding: 'utf8', timeout: 30000 });
+    console.log('status:', r.status, 'signal:', r.signal, 'error:', r.error && r.error.message);
+    console.log('STDOUT:', (r.stdout || '').slice(0, 800));
+    console.log('STDERR:', (r.stderr || '').slice(0, 2000));
+};
+
+const flags = ['--headless=new', '--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--dump-dom', 'about:blank'];
+launch('WRAPPER LAUNCH', '/usr/bin/chromium', flags);
+launch('REAL BINARY LAUNCH', '/usr/lib/chromium/chromium', flags);
+launch('OLD HEADLESS MODE', '/usr/bin/chromium', ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--dump-dom', 'about:blank']);
+
 console.log('\n===== DIAG DONE =====\n');

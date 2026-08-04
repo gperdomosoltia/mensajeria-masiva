@@ -10,6 +10,7 @@ const queue = require('./helper/queue.js');
 const puppeteer = require('puppeteer');
 const morgan = require('morgan');
 const normalizeWhatsAppJid = require("./helper/normalizePhoneNumber.js");
+const resolveLidToPhone = require("./helper/resolveLid.js");
 const { uploadImage } = require("./services/gcs.service.js"); 
 const { createNotifier } = require('./controller/notify.service');
 const { addToBlackList } = require('./controller/function-calling.js');
@@ -160,12 +161,16 @@ client.on('message', async msg => {
     if (msg.author) return; 
     if (msg.timestamp && msg.timestamp < startTimestamp) return;
     if (msg.from === 'status@broadcast') return;
+    // Los canales (@newsletter) no son conversaciones: getChat() revienta con ellos.
+    if (msg.from.endsWith('@newsletter')) return;
     console.log("Entrando a mensajes: ", msg.from);
 
     const allowedTypes = ['chat', 'ptt', 'audio', 'image', 'location'];
     if (!allowedTypes.includes(msg.type)) return;
 
-    const rawUserId = msg.from;
+    // WhatsApp ahora entrega los remitentes como `@lid`. Hay que traducirlos a
+    // `@c.us` antes de usarlos: son la clave de suscripciones, historial y blacklist.
+    const rawUserId = await resolveLidToPhone(client, msg.from);
     const userId = rawUserId.split('@')[0];
     
     if (processingUsers.has(rawUserId)) return;
@@ -189,7 +194,15 @@ client.on('message', async msg => {
 
         const contact = await msg.getContact();
         const userName = contact.pushname || "Usuario";
-        const chat = await msg.getChat();
+
+        // `chat` solo alimenta el indicador "escribiendo…" (helper/queue.js), que ya
+        // valida que exista. Si getChat() falla, se responde igual sin indicador.
+        let chat = null;
+        try {
+            chat = await msg.getChat();
+        } catch (err) {
+            console.warn(`⚠️  No se pudo obtener el chat de ${userId}; se responde sin indicador de escritura.`);
+        }
 
         // 1. Procesar contenido
         let messagePart = null;

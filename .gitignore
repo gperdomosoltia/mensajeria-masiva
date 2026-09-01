@@ -12,3 +12,6 @@ node_modules/
 tmp/
 *.log
 npm-debug.log*
+
+# Base de datos local de RuVector (herramienta local, no del proyecto)
+ruvector.db

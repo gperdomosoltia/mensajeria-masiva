@@ -13,7 +13,7 @@ const normalizeWhatsAppJid = require("./helper/normalizePhoneNumber.js");
 const resolveLidToPhone = require("./helper/resolveLid.js");
 const { uploadImage } = require("./services/gcs.service.js"); 
 const { createNotifier } = require('./controller/notify.service');
-const { addToBlackList } = require('./controller/function-calling.js');
+const { setNotifier } = require('./controller/notifier.registry.js');
 const { processActiveCampaigns } = require('./services/marketing.service.js');
 const mongoose = require('mongoose');
 const Campaign = require('./models/campaignModel');
@@ -143,15 +143,19 @@ async function enviarMensajeWhatsapp(rawUserId, message) {
     }
 }
 
-// --- Notificador de Agentes (Mantenido) ---
+// --- Notificador de Agentes de Ventas ---
 const handleAgentNotification = createNotifier({
     client,
     mongoose,
-    addToBlackList,
+    pauseBotForUser: mongoController.pauseBotForUser,
     MessageMedia,
     enviarMensajeWhatsapp,
     fetch
 });
+
+// Lo dejamos disponible para services/ai/respond.js, que dispara la tool
+// `notificar_humano` desde este mismo proceso.
+setNotifier(handleAgentNotification);
 
 // --- Manejador de Mensajes ---
 const processingUsers = new Set();
@@ -190,6 +194,22 @@ client.on('message', async msg => {
                 console.log(`🚫 Usuario ${userId} en lista negra.`);
                 return;
             }
+        }
+
+        // Pausa temporal: ya se notificó a un agente de ventas y el humano está
+        // atendiendo este chat. Se registra el mensaje pero el bot no responde
+        // hasta que venza la pausa (BOT_PAUSE_HOURS).
+        const pausa = await mongoController.getBotPause(userId);
+        if (pausa) {
+            console.log(`⏸️ Bot en pausa para ${userId} hasta ${pausa.until.toISOString()} (atiende un humano).`);
+            await mongoController.saveSilentMessage({
+                user: userId,
+                phone: rawUserId,
+                message: msg.body || `[${msg.type}]`,
+                type: msg.type,
+                status: 'paused_for_human'
+            });
+            return;
         }
 
         const contact = await msg.getContact();
@@ -270,10 +290,18 @@ app.post('/enviar', async (req, res) => {
 app.post('/notificar_agente', async (req, res) => {
     const success = await handleAgentNotification(req.body);
     if (success && success.result) {
-        res.json({ success: true });
+        res.json({ success: true, destinatarios: success.destinatarios, pausedUntil: success.pausedUntil });
     } else {
-        res.status(400).json({ success: false });
+        res.status(400).json({ success: false, error: success?.error });
     }
+});
+
+// Reactivar el bot para un usuario antes de que venza la pausa automática.
+app.post('/bot/reanudar', async (req, res) => {
+    const { user } = req.body;
+    if (!user) return res.status(400).json({ success: false, error: "Falta 'user'" });
+    const ok = await mongoController.resumeBotForUser(String(user).split('@')[0]);
+    res.json({ success: ok });
 });
 
 // Endpoint para Pausar manualmente

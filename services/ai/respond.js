@@ -1,6 +1,7 @@
 const { fetch } = require('undici');
 const OpenAI = require('openai');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const { getNotifier } = require('../../controller/notifier.registry');
 
 // ---------- helpers ----------
 function collectFunctionCalls(res) {
@@ -19,19 +20,38 @@ function buildToolSchemas() {
     {
       type: 'function',
       name: 'notificar_humano',
-      description: 'Notifica a un agente humano',
+      description: [
+        'Avisa por WhatsApp al agente de ventas humano.',
+        'LLÁMALA DE INMEDIATO en cuanto el cliente exprese que quiere reservar, agendar,',
+        'apartar un cupo, inscribirse o separar un horario, aunque todavía falten datos:',
+        'en ese caso usa tipo_notificacion "RESERVA" y manda lo que tengas.',
+        'Úsala también si el cliente pide hablar con una persona, reclama o pregunta algo',
+        'que no puedes resolver. No anuncies que estás usando una herramienta: después de',
+        'llamarla, confirma con naturalidad al cliente que un asesor lo contactará.'
+      ].join(' '),
       parameters: {
         type: 'object',
         properties: {
-          descripcion: { type: 'string' },
-          tipo_notificacion: { type: 'string' },
+          tipo_notificacion: {
+            type: 'string',
+            enum: ['RESERVA', 'INTERES', 'SOPORTE', 'RECLAMO', 'OTRO'],
+            description: 'RESERVA cuando el cliente quiere reservar o agendar.'
+          },
+          descripcion: {
+            type: 'string',
+            description: 'Resumen en una o dos frases de lo que pidió el cliente, en sus términos.'
+          },
           nombre_cliente: { type: 'string' },
           apellido_cliente: { type: 'string' },
-          email_curso: { type: 'string' },
-          source: { type: 'string' },
-          telefono: { type: 'string' }
+          telefono: { type: 'string', description: 'Solo si el cliente da un número distinto al del chat.' },
+          email: { type: 'string' },
+          servicio: { type: 'string', description: 'Clase, plan o servicio que quiere reservar.' },
+          fecha: { type: 'string', description: 'Fecha pedida, tal como la dijo el cliente (ej. "sábado 14" o "14/09").' },
+          hora: { type: 'string', description: 'Hora pedida (ej. "7:00 am").' },
+          cantidad_personas: { type: 'string', description: 'Cuántas personas asistirían.' },
+          source: { type: 'string' }
         },
-        required: ['descripcion', 'tipo'],
+        required: ['descripcion', 'tipo_notificacion'],
         additionalProperties: true
       }
     }
@@ -39,29 +59,51 @@ function buildToolSchemas() {
 }
 
 async function exec_notificar_humano({ channel, rawUserId, argsJSON }) {
-    const url = process.env.NOTIFICAR_HUMANO_URL;
-    if (!url) return JSON.stringify({ status: 'error', mensaje: 'URL de notificar_humano no configurada' });
-
     let a = {};
     try { a = argsJSON ? JSON.parse(argsJSON) : {}; } catch { a = {}; }
 
     const payload = {
       descripcion: a.descripcion || a.detalle || 'Solicitud de contacto humano',
-      tipo_notificacion: a.tipo_notificacion || 'INTERES EN CONTRATAR SERVICIO',
+      tipo_notificacion: a.tipo_notificacion || 'OTRO',
       nombre_cliente: a.nombre_cliente || a.nombre || '',
       apellido_cliente: a.apellido_cliente || a.apellido || '',
-      email_curso: a.email_curso || a.email || '',
+      email: a.email || a.email_curso || '',
+      servicio: a.servicio || '',
+      fecha: a.fecha || '',
+      hora: a.hora || '',
+      cantidad_personas: a.cantidad_personas || '',
       source: channel || 'whatsapp',
-      telefono: a.telefono || (channel === 'whatsapp' ? ensureWhatsAppJid(rawUserId) : undefined)
+      // El teléfono del chat manda: es el número real por el que escribe el cliente.
+      telefono: (channel === 'whatsapp' && rawUserId) ? ensureWhatsAppJid(rawUserId) : (a.telefono || undefined)
     };
-  
+
+    // Camino normal: el notificador vive en el mismo proceso (lo registra index.js),
+    // así que se llama directo, sin salto HTTP ni timeouts.
+    const notifier = getNotifier();
+    if (notifier) {
+      try {
+        const res = await notifier(payload);
+        return JSON.stringify(
+          res?.result
+            ? { status: 'success', mensaje: 'Agente de ventas notificado', tipo: res.tipo_notificacion }
+            : { status: 'error', mensaje: res?.error || 'No se pudo notificar al agente' }
+        );
+      } catch (e) {
+        return JSON.stringify({ status: 'error', mensaje: String(e?.message || e) });
+      }
+    }
+
+    // Respaldo: si este módulo corre fuera del proceso del bot, se usa el endpoint HTTP.
+    const url = process.env.NOTIFICAR_HUMANO_URL;
+    if (!url) return JSON.stringify({ status: 'error', mensaje: 'Notificador no disponible: no hay notifier registrado ni NOTIFICAR_HUMANO_URL' });
+
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       timeout: Number(process.env.CALLBACK_TIMEOUT_MS || 8000)
     });
-  
+
     const text = await resp.text();
     if (!resp.ok) return JSON.stringify({ status: 'error', http_status: resp.status, body: text });
     try { return JSON.stringify(JSON.parse(text)); } catch { return JSON.stringify({ status: 'success', data: text }); }
@@ -105,7 +147,7 @@ async function respondWithConversation({
   promptId = process.env.PROMPT_ID
 }) {
   if (!conversation_id) throw new Error('conversation_id requerido');
-  const tools = buildToolSchemas(); // Ahora solo contiene 'notificar_humano'
+  const tools = buildToolSchemas(); // Solo contiene 'notificar_humano'
 
   const input = mapBatchToTurn(messages);
   if (!input.length) throw new Error('EMPTY_INPUT');

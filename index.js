@@ -71,10 +71,13 @@ app.listen(PORT, () => console.log(`🌐 Server en puerto ${PORT}`));
 
 // --- Cliente WhatsApp ---
 const client = new Client({
-    // clientId nuevo: fuerza un perfil de navegador limpio. El perfil viejo lo creó
-    // el Chromium anterior y es incompatible con el Chrome nuevo (la página de WhatsApp
-    // se recarga durante la inyección). Requiere re-escanear el QR una vez.
-    authStrategy: new LocalAuth({ clientId: 'chrome-cft' }),
+    // clientId nuevo (2026-09-07, segunda vez): la sesión guardada en el volumen
+    // sigue intentando restaurarse en cada arranque y esa restauración recarga la
+    // página a mitad de la inyección de whatsapp-web.js -> "Execution context was
+    // destroyed" en cada boot (crash loop real, no solo tras LOGOUT). Un clientId
+    // nuevo evita tocar el perfil viejo y arranca directo a pantalla de QR limpia.
+    // Requiere re-escanear el QR una vez.
+    authStrategy: new LocalAuth({ clientId: 'chrome-cft-2' }),
     // Fija la versión de WhatsApp Web: la versión "live" rompe la inyección de
     // whatsapp-web.js ("Execution context was destroyed"). Actualizar el número
     // si WhatsApp vuelve a romper la inyección o el pareo por QR empieza a fallar

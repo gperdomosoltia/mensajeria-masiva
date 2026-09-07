@@ -24,6 +24,7 @@ const PORT = process.env.PORT || 3000;
 const PUBLIC_IMAGE_DIR = path.join(__dirname, 'public_images');
 const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
 const CACHE_DIR = path.join(__dirname, '.wwebjs_cache');
+const CLIENT_ID = 'chrome-cft-3';
 
 
 if (!fs.existsSync(PUBLIC_IMAGE_DIR)) fs.mkdirSync(PUBLIC_IMAGE_DIR, { recursive: true });
@@ -71,13 +72,16 @@ app.listen(PORT, () => console.log(`🌐 Server en puerto ${PORT}`));
 
 // --- Cliente WhatsApp ---
 const client = new Client({
-    // clientId nuevo (2026-09-07, segunda vez): la sesión guardada en el volumen
-    // sigue intentando restaurarse en cada arranque y esa restauración recarga la
-    // página a mitad de la inyección de whatsapp-web.js -> "Execution context was
-    // destroyed" en cada boot (crash loop real, no solo tras LOGOUT). Un clientId
-    // nuevo evita tocar el perfil viejo y arranca directo a pantalla de QR limpia.
-    // Requiere re-escanear el QR una vez.
-    authStrategy: new LocalAuth({ clientId: 'chrome-cft-2' }),
+    // clientId nuevo (2026-09-07, tercera vez): cada vez que la sesión guardada
+    // en el volumen queda inválida (logout desde el teléfono, perfil viejo
+    // incompatible), whatsapp-web.js se cuelga tratando de restaurarla -
+    // "Execution context was destroyed" o, si tarda más, "Runtime.callFunctionOn
+    // timed out" al llegar al protocolTimeout de puppeteer - y nunca llega a
+    // emitir 'qr'. El handler de 'disconnected'/LOGOUT ya borra la sesión sola
+    // de aquí en adelante (ver abajo); este bump es solo para saltar la que ya
+    // quedó corrupta en el volumen antes de tener ese fix. Requiere re-escanear
+    // el QR una vez.
+    authStrategy: new LocalAuth({ clientId: CLIENT_ID }),
     // Fija la versión de WhatsApp Web: la versión "live" rompe la inyección de
     // whatsapp-web.js ("Execution context was destroyed"). Actualizar el número
     // si WhatsApp vuelve a romper la inyección o el pareo por QR empieza a fallar
@@ -130,6 +134,20 @@ client.on('ready', () => {
 client.on('disconnected', (reason) => {
     console.log('🔌 Desconectado:', reason);
     if (reason === 'LOGOUT') {
+        // LOGOUT significa que el teléfono desvinculó el dispositivo: la sesión
+        // guardada en el volumen queda inválida. Si no la borramos, el próximo
+        // arranque intenta restaurarla y whatsapp-web.js se cuelga inyectando en
+        // esa sesión muerta hasta el protocolTimeout de puppeteer (~180s) y
+        // revienta con "Runtime.callFunctionOn timed out" sin llegar a emitir QR
+        // nunca — loop de crash cada ~3 min. Borrar la carpeta de sesión fuerza
+        // un arranque limpio con QR nuevo de una.
+        const sessionDir = path.join(AUTH_DIR, `session-${CLIENT_ID}`);
+        try {
+            fs.rmSync(sessionDir, { recursive: true, force: true });
+            console.log(`🗑️ Sesión eliminada: ${sessionDir}`);
+        } catch (e) {
+            console.error('❌ No se pudo borrar la sesión:', e);
+        }
         // No reintentar client.initialize() aquí: el puppeteer/page de la sesión
         // vieja queda a medio destruir y la reinyección revienta con
         // "Execution context was destroyed", tumbando el proceso igual pero con

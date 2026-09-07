@@ -116,6 +116,23 @@ const client = new Client({
     }
 });
 
+// Borra la carpeta de sesión de LocalAuth y sale para que Railway
+// (restartPolicy ON_FAILURE) levante un contenedor nuevo. Se usa tanto en
+// LOGOUT (sesión invalidada por el teléfono) como en el watchdog de abajo
+// (sesión que nunca logra estabilizar sola es tan sospechosa como una
+// invalidada — no tiene sentido reintentar la misma carpeta para siempre).
+function wipeSessionAndExit(motivo) {
+    const sessionDir = path.join(AUTH_DIR, `session-${CLIENT_ID}`);
+    try {
+        fs.rmSync(sessionDir, { recursive: true, force: true });
+        console.log(`🗑️ Sesión eliminada (${motivo}): ${sessionDir}`);
+    } catch (e) {
+        console.error('❌ No se pudo borrar la sesión:', e);
+    }
+    console.log('♻️ Saliendo para reinicio limpio del contenedor...');
+    process.exit(1);
+}
+
 // --- Inicialización ---
 (async () => {
     await mongoController.connectDB();
@@ -130,12 +147,12 @@ const client = new Client({
 // siempre, y Railway nunca lo reinicia porque nunca sale con error. Si no
 // llega ni 'qr' ni 'ready' en READY_TIMEOUT_MS desde el arranque (o desde el
 // último 'qr', que sí se reemite mientras la sesión sigue viva esperando
-// escaneo), forzamos process.exit(1) para que el restartPolicy lo levante
-// limpio de nuevo.
+// escaneo), asumimos que la sesión guardada (si la hay) está en mal estado
+// -tal como una invalidada por LOGOUT- y la borramos antes de reiniciar, para
+// no quedar reintentando la misma sesión rota cada 90s para siempre.
 const READY_TIMEOUT_MS = 90000;
 let watchdog = setTimeout(() => {
-    console.error(`⏱️ Sin 'qr' ni 'ready' en ${READY_TIMEOUT_MS / 1000}s: reiniciando contenedor.`);
-    process.exit(1);
+    wipeSessionAndExit(`sin 'qr' ni 'ready' en ${READY_TIMEOUT_MS / 1000}s`);
 }, READY_TIMEOUT_MS);
 
 client.on('qr', qr => {
@@ -143,8 +160,7 @@ client.on('qr', qr => {
     console.log('🔍 QR Recibido. Escanéalo en el navegador.');
     clearTimeout(watchdog);
     watchdog = setTimeout(() => {
-        console.error(`⏱️ Sin nuevo 'qr' ni 'ready' en ${READY_TIMEOUT_MS / 1000}s: reiniciando contenedor.`);
-        process.exit(1);
+        wipeSessionAndExit(`sin nuevo 'qr' ni 'ready' en ${READY_TIMEOUT_MS / 1000}s`);
     }, READY_TIMEOUT_MS);
 });
 
@@ -168,26 +184,13 @@ client.on('disconnected', (reason) => {
     console.log('🔌 Desconectado:', reason);
     if (reason === 'LOGOUT') {
         // LOGOUT significa que el teléfono desvinculó el dispositivo: la sesión
-        // guardada en el volumen queda inválida. Si no la borramos, el próximo
-        // arranque intenta restaurarla y whatsapp-web.js se cuelga inyectando en
-        // esa sesión muerta hasta el protocolTimeout de puppeteer (~180s) y
-        // revienta con "Runtime.callFunctionOn timed out" sin llegar a emitir QR
-        // nunca — loop de crash cada ~3 min. Borrar la carpeta de sesión fuerza
-        // un arranque limpio con QR nuevo de una.
-        const sessionDir = path.join(AUTH_DIR, `session-${CLIENT_ID}`);
-        try {
-            fs.rmSync(sessionDir, { recursive: true, force: true });
-            console.log(`🗑️ Sesión eliminada: ${sessionDir}`);
-        } catch (e) {
-            console.error('❌ No se pudo borrar la sesión:', e);
-        }
-        // No reintentar client.initialize() aquí: el puppeteer/page de la sesión
-        // vieja queda a medio destruir y la reinyección revienta con
-        // "Execution context was destroyed", tumbando el proceso igual pero con
-        // stack sucio. Salimos limpio y dejamos que Railway (restartPolicy
-        // ON_FAILURE) levante un contenedor nuevo con browser fresco.
-        console.log('♻️ Saliendo para reinicio limpio del contenedor...');
-        process.exit(1);
+        // guardada en el volumen queda inválida. No reintentamos
+        // client.initialize() aquí: el puppeteer/page de la sesión vieja queda a
+        // medio destruir y la reinyección revienta con "Execution context was
+        // destroyed". wipeSessionAndExit borra la sesión y sale limpio para que
+        // Railway (restartPolicy ON_FAILURE) levante un contenedor nuevo con
+        // browser fresco y QR nuevo de una.
+        wipeSessionAndExit('LOGOUT');
     }
 });
 

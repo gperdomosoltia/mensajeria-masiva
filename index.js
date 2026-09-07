@@ -123,12 +123,33 @@ const client = new Client({
     client.initialize();
 })();
 
+// Watchdog: como ahora tragamos las unhandledRejection de whatsapp-web.js (ver
+// arriba) para no crashear en la carrera de framenavigated, un inject() que
+// falle en firme (auth timeout, contexto muerto sin más navegaciones que lo
+// reintenten) ya no tumba el proceso — se queda colgado en silencio para
+// siempre, y Railway nunca lo reinicia porque nunca sale con error. Si no
+// llega ni 'qr' ni 'ready' en READY_TIMEOUT_MS desde el arranque (o desde el
+// último 'qr', que sí se reemite mientras la sesión sigue viva esperando
+// escaneo), forzamos process.exit(1) para que el restartPolicy lo levante
+// limpio de nuevo.
+const READY_TIMEOUT_MS = 90000;
+let watchdog = setTimeout(() => {
+    console.error(`⏱️ Sin 'qr' ni 'ready' en ${READY_TIMEOUT_MS / 1000}s: reiniciando contenedor.`);
+    process.exit(1);
+}, READY_TIMEOUT_MS);
+
 client.on('qr', qr => {
     currentQR = qr;
     console.log('🔍 QR Recibido. Escanéalo en el navegador.');
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+        console.error(`⏱️ Sin nuevo 'qr' ni 'ready' en ${READY_TIMEOUT_MS / 1000}s: reiniciando contenedor.`);
+        process.exit(1);
+    }, READY_TIMEOUT_MS);
 });
 
 client.on('ready', () => {
+    clearTimeout(watchdog);
     currentQR = null;
     console.log('✅ WhatsApp Conectado y Listo.');
     // Aquí eliminamos initCronJobs()

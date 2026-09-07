@@ -76,11 +76,13 @@ const client = new Client({
     // se recarga durante la inyección). Requiere re-escanear el QR una vez.
     authStrategy: new LocalAuth({ clientId: 'chrome-cft' }),
     // Fija la versión de WhatsApp Web: la versión "live" rompe la inyección de
-    // whatsapp-web.js ("Execution context was destroyed"). ponytail: versión fija,
-    // actualizar el número si WhatsApp vuelve a romper la inyección.
+    // whatsapp-web.js ("Execution context was destroyed"). Actualizar el número
+    // si WhatsApp vuelve a romper la inyección o el pareo por QR empieza a fallar
+    // (2026-09-07: la anterior, 2.3000.1040426045, quedó ~6.5M builds vieja y
+    // causaba "Couldn't link device" al escanear).
     webVersionCache: {
         type: 'remote',
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1040426045-alpha.html',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.3000.1046953833-alpha.html',
     },
     puppeteer: {
         headless: true,
@@ -122,12 +124,16 @@ client.on('ready', () => {
     console.log('📢 Sistema de Marketing Automático iniciado.');
 });
 
-client.on('disconnected', async (reason) => {
+client.on('disconnected', (reason) => {
     console.log('🔌 Desconectado:', reason);
     if (reason === 'LOGOUT') {
-        try { await client.destroy(); } catch (e) {}
-        console.log('♻️ Reiniciando cliente...');
-        client.initialize();
+        // No reintentar client.initialize() aquí: el puppeteer/page de la sesión
+        // vieja queda a medio destruir y la reinyección revienta con
+        // "Execution context was destroyed", tumbando el proceso igual pero con
+        // stack sucio. Salimos limpio y dejamos que Railway (restartPolicy
+        // ON_FAILURE) levante un contenedor nuevo con browser fresco.
+        console.log('♻️ Saliendo para reinicio limpio del contenedor...');
+        process.exit(1);
     }
 });
 

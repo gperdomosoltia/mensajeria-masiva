@@ -18,6 +18,18 @@ const { processActiveCampaigns } = require('./services/marketing.service.js');
 const mongoose = require('mongoose');
 const Campaign = require('./models/campaignModel');
 
+// whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
+// llama `await this.inject()` sin try/catch en cada navegación de la página.
+// El login de WhatsApp dispara varias navegaciones seguidas, y si una segunda
+// navegación llega mientras la primera todavía está sondeando la página,
+// pupPage.evaluate() tira "Execution context was destroyed" como rejection
+// no capturada -> tumba TODO el proceso, incluso con sesión y versión de WA
+// Web sanas. La librería reintenta inject() solo en la próxima navegación, así
+// que basta con tragar el error aquí para que el proceso sobreviva a la
+// carrera en vez de crashear el contenedor entero cada vez que alguien parea.
+process.on('unhandledRejection', (reason) => {
+    console.error('⚠️  Unhandled rejection (ignorada, ver comentario arriba):', reason);
+});
 
 // --- Configuración Básica ---
 const PORT = process.env.PORT || 3000;

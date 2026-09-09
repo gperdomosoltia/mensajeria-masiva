@@ -12,6 +12,7 @@ const morgan = require('morgan');
 const normalizeWhatsAppJid = require("./helper/normalizePhoneNumber.js");
 const resolveLidToPhone = require("./helper/resolveLid.js");
 const retryAsync = require("./helper/retryAsync.js");
+const downloadMediaCompat = require("./helper/downloadMediaCompat.js");
 const { uploadImage } = require("./services/gcs.service.js"); 
 const { createNotifier } = require('./controller/notify.service');
 const { setNotifier } = require('./controller/notifier.registry.js');
@@ -292,18 +293,24 @@ client.on('message', async msg => {
         let messagePart = null;
 
         if (msg.type === 'ptt' || msg.type === 'audio') {
-            // downloadMedia() hace un solo pupPage.evaluate() sin reintento propio:
-            // si choca con una navegación interna de WhatsApp Web (la misma carrera
-            // de framenavigated documentada arriba, que también puede darse en una
-            // sesión ya conectada hace horas, no solo al parear) tira "Execution
-            // context was destroyed" una vez y se pierde la nota de voz sin más.
-            // La librería reinyecta sola en 1-2s, así que reintentamos con margen.
-            const media = await retryAsync(() => msg.downloadMedia(), 3, 1500,
+            // msg.downloadMedia() de whatsapp-web.js pasa this.id._serialized al
+            // navegador para buscar el mensaje. WhatsApp Web >= 2.3000.1043xxx expone
+            // ese id como `$1` en vez de `_serialized` para remitentes @lid (la migración
+            // de WhatsApp a ids que ocultan el número real, ver "Entrando a mensajes:
+            // ...@lid" en los logs) -> _serialized sale undefined, Msg.get(undefined)
+            // revienta adentro del navegador, y sale para afuera como un error
+            // minificado y críptico ("r: r"). Bug reportado y confirmado
+            // (github wwebjs/whatsapp-web.js issue #201856), con fix en un PR sin
+            // mergear ni publicado en npm (#201840). downloadMediaCompat reimplementa
+            // la función con el fallback a $1 mientras no haya release oficial.
+            // retryAsync queda como defensa extra por si esto SÍ coincide alguna vez
+            // con una race de navegación real (no cuesta nada, ya no debería activarse).
+            const media = await retryAsync(() => downloadMediaCompat(msg), 3, 1500,
                 (err, i) => console.warn(`⚠️  downloadMedia (audio) falló, intento ${i}/3:`, err?.message || err));
             const transcription = await transcribeAudio(media);
             messagePart = { type: 'text', content: transcription.text, caption: null, originalMessageType: msg.type };
         } else if (msg.type === 'image') {
-            const media = await retryAsync(() => msg.downloadMedia(), 3, 1500,
+            const media = await retryAsync(() => downloadMediaCompat(msg), 3, 1500,
                 (err, i) => console.warn(`⚠️  downloadMedia (imagen) falló, intento ${i}/3:`, err?.message || err));
             const imageBuffer = Buffer.from(media.data, 'base64');
             const dataUrl = await uploadImage(imageBuffer, media.filename || 'image.jpg', media.mimetype);

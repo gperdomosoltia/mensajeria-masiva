@@ -20,6 +20,9 @@ const { processActiveCampaigns } = require('./services/marketing.service.js');
 const mongoose = require('mongoose');
 const Campaign = require('./models/campaignModel');
 const { requireApiKey } = require('./helper/requireApiKey.js');
+const PaymentReview = require('./models/paymentReviewModel.js');
+const { crearServicioPagos } = require('./services/payment.service.js');
+const { esComprobante } = require('./services/payment.detector.js');
 
 // whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
 // llama `await this.inject()` sin try/catch en cada navegación de la página.
@@ -223,6 +226,15 @@ const handleAgentNotification = createNotifier({
 // `notificar_humano` desde este mismo proceso.
 setNotifier(handleAgentNotification);
 
+// Servicio de pagos por validar. Se arma acá porque necesita el cliente de WhatsApp
+// ya inicializado (para el acuse) y el notificador de agentes.
+const registrarPagoPendiente = crearServicioPagos({
+    PaymentReview,
+    pauseBotForUser: mongoController.pauseBotForUser,
+    enviarMensajeWhatsapp,
+    notificarAgentes: handleAgentNotification
+});
+
 // --- Manejador de Mensajes ---
 const processingUsers = new Set();
 const startTimestamp = Math.floor(Date.now() / 1000);
@@ -316,7 +328,28 @@ client.on('message', async msg => {
             const imageBuffer = Buffer.from(media.data, 'base64');
             const dataUrl = await uploadImage(imageBuffer, media.filename || 'image.jpg', media.mimetype);
             const dataImg = `data:${media.mimetype};base64,${media.data}`;
-            
+
+            // ¿Es un comprobante de pago? Si sí, el bot no responde con IA: acusa
+            // recibo, se pausa y deja el caso para que un asesor lo valide.
+            if (process.env.PAGO_DETECTOR_ENABLED !== 'false' && await esComprobante(media.data, media.mimetype)) {
+                await mongoController.saveSilentMessage({
+                    user: userId,
+                    phone: rawUserId,
+                    name: userName,
+                    message: msg.caption || '[comprobante de pago]',
+                    type: msg.type,
+                    status: 'paused_for_payment'
+                });
+                await registrarPagoPendiente({
+                    userId,
+                    rawUserId,
+                    userName,
+                    motivo: 'comprobante',
+                    gcs_objectKey: dataUrl
+                });
+                return;
+            }
+
             messagePart = {
                 type: 'image',
                 gcs_objectKey: dataUrl,

@@ -19,6 +19,7 @@ const { setNotifier } = require('./controller/notifier.registry.js');
 const { processActiveCampaigns } = require('./services/marketing.service.js');
 const mongoose = require('mongoose');
 const Campaign = require('./models/campaignModel');
+const { requireApiKey } = require('./helper/requireApiKey.js');
 
 // whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
 // llama `await this.inject()` sin try/catch en cada navegación de la página.
@@ -358,7 +359,7 @@ client.on('message', async msg => {
 
 // --- Endpoints API ---
 
-app.post('/enviar', async (req, res) => {
+app.post('/enviar', requireApiKey, async (req, res) => {
     const { to, message } = req.body;
     if(!to || !message) return res.status(400).json({ success: false, error: "Falta 'to' o 'message'" });
     const jid = normalizeWhatsAppJid(to);
@@ -366,7 +367,7 @@ app.post('/enviar', async (req, res) => {
     res.json({ success: Boolean(result), to: jid});
 });
 
-app.post('/notificar_agente', async (req, res) => {
+app.post('/notificar_agente', requireApiKey, async (req, res) => {
     const success = await handleAgentNotification(req.body);
     if (success && success.result) {
         res.json({ success: true, destinatarios: success.destinatarios, pausedUntil: success.pausedUntil });
@@ -376,7 +377,7 @@ app.post('/notificar_agente', async (req, res) => {
 });
 
 // Reactivar el bot para un usuario antes de que venza la pausa automática.
-app.post('/bot/reanudar', async (req, res) => {
+app.post('/bot/reanudar', requireApiKey, async (req, res) => {
     const { user } = req.body;
     if (!user) return res.status(400).json({ success: false, error: "Falta 'user'" });
     const ok = await mongoController.resumeBotForUser(String(user).split('@')[0]);
@@ -384,7 +385,7 @@ app.post('/bot/reanudar', async (req, res) => {
 });
 
 // Endpoint para Pausar manualmente
-app.post('/campaign/pause', async (req, res) => {
+app.post('/campaign/pause', requireApiKey, async (req, res) => {
     const { id } = req.body;
     try {
         await Campaign.updateOne({ id: id }, { status: 'paused' });
@@ -395,7 +396,7 @@ app.post('/campaign/pause', async (req, res) => {
 });
 
 // Endpoint para Reanudar manualmente
-app.post('/campaign/resume', async (req, res) => {
+app.post('/campaign/resume', requireApiKey, async (req, res) => {
     const { id } = req.body;
     try {
         await Campaign.updateOne({ id: id }, { status: 'pending' });

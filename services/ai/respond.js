@@ -60,7 +60,7 @@ function buildToolSchemas() {
       type: 'function',
       name: 'pago_pendiente',
       description: [
-        'Regístra que el cliente va a pagar o ya pagó la mensualidad, y avisa al asesor.',
+        'Registra que el cliente ya pagó o pidió los datos para pagar, y avisa al asesor.',
         'LLÁMALA DE INMEDIATO cuando el cliente pida los datos para pagar,',
         'diga que ya pagó o anuncie que va a mandar el comprobante. Usa motivo "comprobante"',
         'si dice que ya pagó o que manda el comprobante, y "datos_pago" si está pidiendo los datos.',
@@ -146,10 +146,16 @@ async function exec_pago_pendiente({ rawUserId, argsJSON, userName }) {
   try {
     const resultado = await registrar({ userId: String(jid).split('@')[0], rawUserId: jid, userName: userName || null, motivo });
     const acked = Boolean(resultado?.acked);
+    // M9: el prompt le dice al modelo que no escriba nada después de llamar esta tool.
+    // Cuando NO hubo acuse (caso duplicado con pausa viva, o falló la pausa), el
+    // cliente no recibió nada todavía, así que el mensaje se lo tiene que decir
+    // explícito: si no, el modelo se queda callado y el turno cae al fallback genérico.
     return {
       out: JSON.stringify({
         status: 'success',
-        mensaje: acked ? 'Asesor notificado; ya se le respondió al cliente' : 'Registrado; no se mandó un nuevo acuse al cliente'
+        mensaje: acked
+          ? 'Asesor notificado; ya se le respondió al cliente'
+          : 'Registrado, pero NO se le respondió al cliente: respóndele tú en este turno.'
       }),
       suppress: acked
     };

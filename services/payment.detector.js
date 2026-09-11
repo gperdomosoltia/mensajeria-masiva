@@ -34,7 +34,11 @@ function parseDetectorOutput(raw) {
 }
 
 async function esComprobante(imagenBase64, mimetype) {
-    const minConf = Number(process.env.PAGO_DETECTOR_MIN_CONF || 0.7);
+    // Number(valor_basura) da NaN, y `confianza >= NaN` siempre es false: una var de
+    // entorno mal puesta apagaría la detección de comprobantes en silencio. Por eso
+    // solo se usa el valor parseado si es un número finito y positivo.
+    const minConfEnv = Number(process.env.PAGO_DETECTOR_MIN_CONF);
+    const minConf = Number.isFinite(minConfEnv) && minConfEnv > 0 ? minConfEnv : 0.7;
     try {
         const client = getOpenAIClient();
         const response = await client.chat.completions.create({
@@ -46,7 +50,7 @@ async function esComprobante(imagenBase64, mimetype) {
                     { type: 'image_url', image_url: { url: `data:${mimetype || 'image/jpeg'};base64,${imagenBase64}`, detail: 'low' } }
                 ]
             }]
-        });
+        }, { timeout: 8000, maxRetries: 1 }); // I4: no dejar el lock del usuario colgado por el timeout/reintentos default del SDK (600s, 2 retries)
         const out = parseDetectorOutput(response.choices?.[0]?.message?.content);
         console.log('[PAGO_DETECTOR]', out);
         return out.esComprobante && out.confianza >= minConf;

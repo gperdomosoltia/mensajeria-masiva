@@ -63,3 +63,24 @@ test('si la pausa falla no se crea el caso', async () => {
   assert.equal(res.acked, false);
   assert.equal(d.creados.length, 0);
 });
+
+test('si enviarMensajeWhatsapp resuelve false, el caso se crea igual pero acked queda false', async () => {
+  // enviarMensajeWhatsapp real (index.js) no lanza en un fallo de WhatsApp: atrapa el
+  // error de client.sendMessage y resuelve `false`. acked debe reflejar ese valor
+  // resuelto, no solo la ausencia de una excepción.
+  const d = deps({ enviarMensajeWhatsapp: async () => false });
+  const registrar = crearServicioPagos(d);
+  const res = await registrar({ userId: '584121112233', rawUserId: '584121112233@c.us', userName: 'Ana', motivo: 'comprobante' });
+
+  assert.equal(res.created, true);
+  assert.equal(res.acked, false);
+});
+
+test('si enviarMensajeWhatsapp lanza, acked queda false y la función no rechaza', async () => {
+  const d = deps({ enviarMensajeWhatsapp: async () => { throw new Error('boom'); } });
+  const registrar = crearServicioPagos(d);
+  const res = await registrar({ userId: '584121112233', rawUserId: '584121112233@c.us', userName: 'Ana', motivo: 'comprobante' });
+
+  assert.equal(res.created, true);
+  assert.equal(res.acked, false);
+});

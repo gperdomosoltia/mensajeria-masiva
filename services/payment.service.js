@@ -40,12 +40,17 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
             notifyCount: 0
         });
 
-        // `acked` solo queda en true si el envío resuelve sin lanzar: es lo que le dice
-        // a services/ai/respond.js si de verdad puede suprimir la respuesta del modelo.
+        // `acked` solo queda en true si el envío RESOLVIÓ estrictamente `true`: es lo que
+        // le dice a services/ai/respond.js si de verdad puede suprimir la respuesta del
+        // modelo. enviarMensajeWhatsapp (index.js) no lanza en un fallo real de WhatsApp:
+        // atrapa el error de client.sendMessage y resuelve `false` (o `undefined` si
+        // faltan argumentos), así que basta con que no lance no alcanza para confiar en
+        // el acuse — hay que mirar el valor resuelto.
         let acked = false;
         try {
-            await enviarMensajeWhatsapp(rawUserId, motivo === 'comprobante' ? ACK_COMPROBANTE : ACK_DATOS_PAGO);
-            acked = true;
+            const enviado = await enviarMensajeWhatsapp(rawUserId, motivo === 'comprobante' ? ACK_COMPROBANTE : ACK_DATOS_PAGO);
+            acked = enviado === true;
+            if (!acked) console.error(`❌ [PAGO] enviarMensajeWhatsapp no confirmó el envío del acuse a ${userId} (resolvió ${JSON.stringify(enviado)}).`);
         } catch (e) {
             console.error('❌ [PAGO] No se pudo enviar el acuse al cliente:', e.message);
         }

@@ -10,7 +10,20 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
         if (!userId || !rawUserId || !motivo) return { created: false, review: null, acked: false };
 
         // El cliente puede mandar tres capturas seguidas: un solo caso por cliente.
-        const existente = await PaymentReview.findOne({ user: String(userId), status: 'pending' });
+        let existente = await PaymentReview.findOne({ user: String(userId), status: 'pending' });
+
+        // Un caso `pending` cuya pausa ya venció es un caso viejo, no un duplicado real
+        // (p. ej. el dashboard estuvo caído y nunca lo expiró): se cierra como `expired`
+        // y se sigue como si no hubiera caso, creando uno nuevo. Solo un caso con la
+        // pausa todavía viva corta el flujo.
+        if (existente && existente.pauseUntil && existente.pauseUntil.getTime() <= Date.now()) {
+            existente.status = 'expired';
+            existente.nextNotifyAt = null;
+            try { await existente.save(); } catch (e) { console.error('❌ [PAGO] No se pudo expirar el caso vencido:', e.message); }
+            console.log(`[PAGO] Caso pendiente de ${userId} tenía la pausa vencida; se marca expired y se crea uno nuevo.`);
+            existente = null;
+        }
+
         if (existente) {
             if (gcs_objectKey && !existente.gcs_objectKey) existente.gcs_objectKey = gcs_objectKey;
             if (motivo === 'comprobante') existente.motivo = 'comprobante';
@@ -21,24 +34,47 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
         }
 
         const horas = Number(process.env.PAGO_PAUSE_HOURS || 2);
-        const pausa = await pauseBotForUser(String(userId), horas, `pago_${motivo}`);
-        if (!pausa || !pausa.until) {
-            console.error(`❌ [PAGO] No se pudo pausar el bot para ${userId}; no se crea el caso.`);
+
+        // M11: se crea el caso ANTES de pausar. Si `PaymentReview.create` fallara
+        // DESPUÉS de pausar (orden anterior), quedaba una pausa huérfana de 2h sin
+        // caso, sin acuse y sin aviso, y nada explicaba por qué el bot se calló. Así,
+        // un fallo acá no deja nada pausado. El pauseUntil se estima con `horas` y se
+        // corrige con el valor real de `pauseBotForUser` apenas se conoce.
+        let review;
+        try {
+            review = await PaymentReview.create({
+                user: String(userId),
+                phone: rawUserId,
+                name: userName,
+                status: 'pending',
+                motivo,
+                gcs_objectKey,
+                detectedAt: new Date(),
+                pauseUntil: new Date(Date.now() + horas * 60 * 60 * 1000),
+                nextNotifyAt: new Date(),   // el dashboard manda el primer recordatorio en su próximo ciclo
+                notifyCount: 0
+            });
+        } catch (e) {
+            console.error('❌ [PAGO] No se pudo crear el caso de pago:', e.message);
             return { created: false, review: null, acked: false };
         }
 
-        const review = await PaymentReview.create({
-            user: String(userId),
-            phone: rawUserId,
-            name: userName,
-            status: 'pending',
-            motivo,
-            gcs_objectKey,
-            detectedAt: new Date(),
-            pauseUntil: pausa.until,
-            nextNotifyAt: new Date(),   // el dashboard manda el primer recordatorio en su próximo ciclo
-            notifyCount: 0
-        });
+        const pausa = await pauseBotForUser(String(userId), horas, `pago_${motivo}`);
+        if (!pausa || !pausa.until) {
+            console.error(`❌ [PAGO] No se pudo pausar el bot para ${userId}; se descarta el caso recién creado.`);
+            try {
+                review.status = 'expired';
+                review.nextNotifyAt = null;
+                await review.save();
+            } catch (e) {
+                console.error('❌ [PAGO] No se pudo expirar el caso sin pausa:', e.message);
+            }
+            return { created: false, review: null, acked: false };
+        }
+
+        // Se refleja en el caso el deadline real de la pausa (por si difiere del estimado).
+        review.pauseUntil = pausa.until;
+        try { await review.save(); } catch (e) { console.error('❌ [PAGO] No se pudo actualizar pauseUntil en el caso:', e.message); }
 
         // `acked` solo queda en true si el envío RESOLVIÓ estrictamente `true`: es lo que
         // le dice a services/ai/respond.js si de verdad puede suprimir la respuesta del
@@ -63,7 +99,10 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
                     : 'El cliente pidió los datos para pagar la mensualidad.',
                 nombre_cliente: userName || '',
                 phone_number: rawUserId,
-                source: 'whatsapp'
+                source: 'whatsapp',
+                // I2: este flujo ya pausó con el deadline del pago (PAGO_PAUSE_HOURS);
+                // que notify.service no lo pise con su propia pausa (BOT_PAUSE_HOURS).
+                skip_pause: true
             });
         } catch (e) {
             console.error('❌ [PAGO] No se pudo avisar a los agentes:', e.message);

@@ -343,16 +343,25 @@ client.on('message', async msg => {
                     name: userName,
                     message: msg.caption || '[comprobante de pago]',
                     type: msg.type,
-                    status: 'paused_for_payment'
+                    status: 'paused_for_payment',
+                    gcs_objectKey: dataUrl
                 });
-                await registrarPagoPendiente({
+                const pagoResult = await registrarPagoPendiente({
                     userId,
                     rawUserId,
                     userName,
                     motivo: 'comprobante',
                     gcs_objectKey: dataUrl
                 });
-                return;
+                // C1: si no se creó caso NI se acusó recibo (caso duplicado con pausa
+                // todavía viva, o `pauseBotForUser` falló), no hay pausa real, ni caso,
+                // ni aviso al agente: dejar al cliente sin respuesta acá sería silencio
+                // total. Se cae al flujo normal de imagen para que la IA conteste como
+                // con cualquier otra foto, en vez de devolver siempre.
+                if (pagoResult?.created || pagoResult?.acked) {
+                    return;
+                }
+                console.log(`[PAGO] Ni se creó caso ni se acusó recibo para ${userId}; se sigue el flujo normal de imagen.`);
             }
 
             messagePart = {

@@ -141,7 +141,11 @@ function createNotifier({ client, mongoose, pauseBotForUser, MessageMedia, envia
     // Pausa temporal: el humano toma el chat y el bot no interfiere. Al vencer,
     // el bot vuelve a responder solo (no hace falta desbloquear a mano).
     let pausedUntil = null;
-    if (result && datos.telefono && typeof pauseBotForUser === 'function') {
+    if (payload.skip_pause) {
+      // I2: quien llamó (p. ej. services/payment.service.js) ya pausó con su propio
+      // deadline y no quiere que se lo pisen con el BOT_PAUSE_HOURS genérico de acá.
+      console.log(`[HANDLE_NOTIFICATION] skip_pause: no se toca la pausa existente de ${datos.telefono}.`);
+    } else if (result && datos.telefono && typeof pauseBotForUser === 'function') {
       try {
         const pausa = await pauseBotForUser(datos.telefono, undefined, `notificacion_${tipo.toLowerCase()}`);
         pausedUntil = pausa?.until || null;

@@ -131,19 +131,30 @@ async function exec_notificar_humano({ channel, rawUserId, argsJSON }) {
     try { return JSON.stringify(JSON.parse(text)); } catch { return JSON.stringify({ status: 'success', data: text }); }
 }
 
+// Devuelve { out, suppress }: `suppress` solo va en true si el servicio de pagos
+// de verdad le mandó el acuse al cliente (resultado.acked). Si el caso ya estaba
+// duplicado o la pausa falló, el cliente no recibió nada todavía, así que el turno
+// debe caer al camino normal (texto del modelo o el de respaldo) en vez de quedar mudo.
 async function exec_pago_pendiente({ rawUserId, argsJSON, userName }) {
   let a = {};
   try { a = argsJSON ? JSON.parse(argsJSON) : {}; } catch { a = {}; }
   const registrar = getPagoRegistrar();
-  if (!registrar) return JSON.stringify({ status: 'error', mensaje: 'Servicio de pagos no disponible' });
+  if (!registrar) return { out: JSON.stringify({ status: 'error', mensaje: 'Servicio de pagos no disponible' }), suppress: false };
 
   const jid = ensureWhatsAppJid(rawUserId);
   const motivo = a.motivo === 'datos_pago' ? 'datos_pago' : 'comprobante';
   try {
-    await registrar({ userId: String(jid).split('@')[0], rawUserId: jid, userName: userName || null, motivo });
-    return JSON.stringify({ status: 'success', mensaje: 'Asesor notificado; ya se le respondió al cliente' });
+    const resultado = await registrar({ userId: String(jid).split('@')[0], rawUserId: jid, userName: userName || null, motivo });
+    const acked = Boolean(resultado?.acked);
+    return {
+      out: JSON.stringify({
+        status: 'success',
+        mensaje: acked ? 'Asesor notificado; ya se le respondió al cliente' : 'Registrado; no se mandó un nuevo acuse al cliente'
+      }),
+      suppress: acked
+    };
   } catch (e) {
-    return JSON.stringify({ status: 'error', mensaje: String(e?.message || e) });
+    return { out: JSON.stringify({ status: 'error', mensaje: String(e?.message || e) }), suppress: false };
   }
 }
 
@@ -225,7 +236,11 @@ async function respondWithConversation({
       try {
         // --- CORRECCIÓN 4: Se elimina la lógica para llamar a exec_get_tasa_bcv ---
         if (name === 'notificar_humano') out = await exec_notificar_humano({ channel, rawUserId, argsJSON });
-        else if (name === 'pago_pendiente') { out = await exec_pago_pendiente({ rawUserId, argsJSON, userName: user_name }); suprimir = true; }
+        else if (name === 'pago_pendiente') {
+          const r = await exec_pago_pendiente({ rawUserId, argsJSON, userName: user_name });
+          out = r.out;
+          suprimir = r.suppress;
+        }
         else out = JSON.stringify({ error: `Tool ${name} no implementada` });
       } catch (e) {
         out = JSON.stringify({ error: String(e?.message || e) });
@@ -238,7 +253,7 @@ async function respondWithConversation({
     hops++;
     const maxHops = Number(process.env.TOOL_HOPS_MAX || 5);
     if (hops >= maxHops) inputList.push({ role: 'user', content: 'Por favor entrega una respuesta final breve sin más herramientas.' });
-    if (hops > maxHops + 1) return { ok: false, error: 'TOOL_LOOP_EXCEEDED', conversationId: conversation_id };
+    if (hops > maxHops + 1) return { ok: false, error: 'TOOL_LOOP_EXCEEDED', conversationId: conversation_id, suppressed };
   }
 }
 

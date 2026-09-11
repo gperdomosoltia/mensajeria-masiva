@@ -7,7 +7,7 @@ const ACK_DATOS_PAGO = 'Con gusto: un asesor te escribe por aquí en un momento 
 
 function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhatsapp, notificarAgentes }) {
     return async function registrarPagoPendiente({ userId, rawUserId, userName = null, motivo, gcs_objectKey = null }) {
-        if (!userId || !rawUserId || !motivo) return { created: false, review: null };
+        if (!userId || !rawUserId || !motivo) return { created: false, review: null, acked: false };
 
         // El cliente puede mandar tres capturas seguidas: un solo caso por cliente.
         const existente = await PaymentReview.findOne({ user: String(userId), status: 'pending' });
@@ -16,14 +16,15 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
             if (motivo === 'comprobante') existente.motivo = 'comprobante';
             try { await existente.save(); } catch (e) { console.error('❌ [PAGO] No se pudo actualizar el caso existente:', e.message); }
             console.log(`[PAGO] Ya había un caso pendiente para ${userId}; no se duplica.`);
-            return { created: false, review: existente };
+            // No se manda acuse: el cliente ya recibió el de la primera captura.
+            return { created: false, review: existente, acked: false };
         }
 
         const horas = Number(process.env.PAGO_PAUSE_HOURS || 2);
         const pausa = await pauseBotForUser(String(userId), horas, `pago_${motivo}`);
         if (!pausa || !pausa.until) {
             console.error(`❌ [PAGO] No se pudo pausar el bot para ${userId}; no se crea el caso.`);
-            return { created: false, review: null };
+            return { created: false, review: null, acked: false };
         }
 
         const review = await PaymentReview.create({
@@ -39,8 +40,12 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
             notifyCount: 0
         });
 
+        // `acked` solo queda en true si el envío resuelve sin lanzar: es lo que le dice
+        // a services/ai/respond.js si de verdad puede suprimir la respuesta del modelo.
+        let acked = false;
         try {
             await enviarMensajeWhatsapp(rawUserId, motivo === 'comprobante' ? ACK_COMPROBANTE : ACK_DATOS_PAGO);
+            acked = true;
         } catch (e) {
             console.error('❌ [PAGO] No se pudo enviar el acuse al cliente:', e.message);
         }
@@ -60,7 +65,7 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
         }
 
         console.log(`[PAGO] Caso creado para ${userId} (${motivo}); bot pausado hasta ${pausa.until.toISOString()}.`);
-        return { created: true, review };
+        return { created: true, review, acked };
     };
 }
 

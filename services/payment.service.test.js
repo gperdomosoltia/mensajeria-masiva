@@ -27,6 +27,7 @@ test('crea el caso, pausa el bot, acusa recibo y avisa a los agentes', async () 
   const res = await registrar({ userId: '584121112233', rawUserId: '584121112233@c.us', userName: 'Ana', motivo: 'comprobante', gcs_objectKey: 'https://x/y.jpg' });
 
   assert.equal(res.created, true);
+  assert.equal(res.acked, true);
   assert.equal(d.pausas.length, 1);
   assert.equal(d.pausas[0].user, '584121112233');
   assert.equal(d.pausas[0].horas, 2);
@@ -47,6 +48,7 @@ test('con un caso pendiente no duplica ni vuelve a acusar recibo', async () => {
   const res = await registrar({ userId: '584121112233', rawUserId: '584121112233@c.us', userName: 'Ana', motivo: 'comprobante', gcs_objectKey: 'https://x/y2.jpg' });
 
   assert.equal(res.created, false);
+  assert.equal(res.acked, false);
   assert.equal(d.enviados.length, 0);
   assert.equal(d.creados.length, 0);
   assert.equal(d.pausas.length, 0);
@@ -58,5 +60,6 @@ test('si la pausa falla no se crea el caso', async () => {
   const registrar = crearServicioPagos(d);
   const res = await registrar({ userId: '58412', rawUserId: '58412@c.us', motivo: 'datos_pago' });
   assert.equal(res.created, false);
+  assert.equal(res.acked, false);
   assert.equal(d.creados.length, 0);
 });

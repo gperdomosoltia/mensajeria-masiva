@@ -61,7 +61,7 @@ function buildToolSchemas() {
       name: 'pago_pendiente',
       description: [
         'Regístra que el cliente va a pagar o ya pagó la mensualidad, y avisa al asesor.',
-        'LLÁMALA DE INMEDIATO cuando el cliente pida los datos para pagar, diga que va a pagar,',
+        'LLÁMALA DE INMEDIATO cuando el cliente pida los datos para pagar,',
         'diga que ya pagó o anuncie que va a mandar el comprobante. Usa motivo "comprobante"',
         'si dice que ya pagó o que manda el comprobante, y "datos_pago" si está pidiendo los datos.',
         'No anuncies que estás usando una herramienta y no escribas nada después de llamarla:',

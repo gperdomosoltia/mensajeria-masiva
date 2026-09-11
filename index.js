@@ -14,7 +14,7 @@ const resolveLidToPhone = require("./helper/resolveLid.js");
 const retryAsync = require("./helper/retryAsync.js");
 const downloadMediaCompat = require("./helper/downloadMediaCompat.js");
 const { uploadImage } = require("./services/gcs.service.js"); 
-const { createNotifier } = require('./controller/notify.service');
+const { createNotifier, destinatariosVentas } = require('./controller/notify.service');
 const { setNotifier } = require('./controller/notifier.registry.js');
 const { processActiveCampaigns } = require('./services/marketing.service.js');
 const mongoose = require('mongoose');
@@ -382,6 +382,17 @@ app.post('/bot/reanudar', requireApiKey, async (req, res) => {
     if (!user) return res.status(400).json({ success: false, error: "Falta 'user'" });
     const ok = await mongoController.resumeBotForUser(String(user).split('@')[0]);
     res.json({ success: ok });
+});
+
+// Envío suelto a los agentes de ventas. Lo usa el dashboard para los recordatorios
+// de pagos por validar: así los números de los agentes viven solo acá.
+app.post('/agentes/aviso', requireApiKey, async (req, res) => {
+    const { mensaje } = req.body;
+    if (!mensaje) return res.status(400).json({ success: false, error: "Falta 'mensaje'" });
+    const destinatarios = destinatariosVentas();
+    if (destinatarios.length === 0) return res.status(503).json({ success: false, error: 'sin_destinatarios' });
+    const results = await Promise.all(destinatarios.map(id => enviarMensajeWhatsapp(id, String(mensaje))));
+    res.json({ success: results.every(r => r === true), destinatarios });
 });
 
 // Endpoint para Pausar manualmente

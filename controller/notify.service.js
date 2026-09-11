@@ -9,7 +9,7 @@
 // AGENTE_VENTAS_PHONE y AGENTE_VENTAS_PHONE_2.
 const normalizeWhatsAppJid = require('../helper/normalizePhoneNumber.js');
 
-const TIPOS_PERMITIDOS = new Set(['RESERVA', 'INTERES', 'SOPORTE', 'RECLAMO', 'OTRO']);
+const TIPOS_PERMITIDOS = new Set(['RESERVA', 'INTERES', 'SOPORTE', 'RECLAMO', 'PAGO', 'OTRO']);
 
 // Valor de placeholder que traen las variables de Railway sin configurar.
 const PLACEHOLDER = 'REEMPLAZAR';
@@ -50,7 +50,9 @@ function construirMensaje(datos) {
 
   const encabezado = datos.tipo === 'RESERVA'
     ? `${agente}, nueva solicitud de RESERVA 🗓️`
-    : `${agente}, nueva notificación (${datos.tipo})`;
+    : datos.tipo === 'PAGO'
+      ? `${agente}, pago por validar 💳`
+      : `${agente}, nueva notificación (${datos.tipo})`;
 
   const lineas = [encabezado, ''];
   if (nombre)                  lineas.push(`Cliente: ${nombre}`);
@@ -153,4 +155,4 @@ function createNotifier({ client, mongoose, pauseBotForUser, MessageMedia, envia
   };
 }
 
-module.exports = { createNotifier };
+module.exports = { createNotifier, destinatariosVentas };

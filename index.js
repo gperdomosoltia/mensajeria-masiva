@@ -16,6 +16,7 @@ const downloadMediaCompat = require("./helper/downloadMediaCompat.js");
 const { uploadImage } = require("./services/gcs.service.js"); 
 const { createNotifier, destinatariosVentas } = require('./controller/notify.service');
 const { setNotifier } = require('./controller/notifier.registry.js');
+const { setPagoRegistrar } = require('./controller/pago.registry.js');
 const { processActiveCampaigns } = require('./services/marketing.service.js');
 const mongoose = require('mongoose');
 const Campaign = require('./models/campaignModel');
@@ -234,6 +235,10 @@ const registrarPagoPendiente = crearServicioPagos({
     enviarMensajeWhatsapp,
     notificarAgentes: handleAgentNotification
 });
+
+// Lo dejamos disponible para services/ai/respond.js, que dispara la tool
+// `pago_pendiente` cuando el cliente avisa por texto que va a pagar o pide los datos.
+setPagoRegistrar(registrarPagoPendiente);
 
 // --- Manejador de Mensajes ---
 const processingUsers = new Set();

@@ -2,6 +2,7 @@ const { fetch } = require('undici');
 const OpenAI = require('openai');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const { getNotifier } = require('../../controller/notifier.registry');
+const { getPagoRegistrar } = require('../../controller/pago.registry');
 
 // ---------- helpers ----------
 function collectFunctionCalls(res) {
@@ -52,6 +53,27 @@ function buildToolSchemas() {
           source: { type: 'string' }
         },
         required: ['descripcion', 'tipo_notificacion'],
+        additionalProperties: true
+      }
+    },
+    {
+      type: 'function',
+      name: 'pago_pendiente',
+      description: [
+        'Regístra que el cliente va a pagar o ya pagó la mensualidad, y avisa al asesor.',
+        'LLÁMALA DE INMEDIATO cuando el cliente pida los datos para pagar, diga que va a pagar,',
+        'diga que ya pagó o anuncie que va a mandar el comprobante. Usa motivo "comprobante"',
+        'si dice que ya pagó o que manda el comprobante, y "datos_pago" si está pidiendo los datos.',
+        'No anuncies que estás usando una herramienta y no escribas nada después de llamarla:',
+        'el sistema ya le responde al cliente.'
+      ].join(' '),
+      parameters: {
+        type: 'object',
+        properties: {
+          motivo: { type: 'string', enum: ['comprobante', 'datos_pago'] },
+          descripcion: { type: 'string', description: 'Una frase con lo que dijo el cliente.' }
+        },
+        required: ['motivo'],
         additionalProperties: true
       }
     }
@@ -109,6 +131,22 @@ async function exec_notificar_humano({ channel, rawUserId, argsJSON }) {
     try { return JSON.stringify(JSON.parse(text)); } catch { return JSON.stringify({ status: 'success', data: text }); }
 }
 
+async function exec_pago_pendiente({ rawUserId, argsJSON, userName }) {
+  let a = {};
+  try { a = argsJSON ? JSON.parse(argsJSON) : {}; } catch { a = {}; }
+  const registrar = getPagoRegistrar();
+  if (!registrar) return JSON.stringify({ status: 'error', mensaje: 'Servicio de pagos no disponible' });
+
+  const jid = ensureWhatsAppJid(rawUserId);
+  const motivo = a.motivo === 'datos_pago' ? 'datos_pago' : 'comprobante';
+  try {
+    await registrar({ userId: String(jid).split('@')[0], rawUserId: jid, userName: userName || null, motivo });
+    return JSON.stringify({ status: 'success', mensaje: 'Asesor notificado; ya se le respondió al cliente' });
+  } catch (e) {
+    return JSON.stringify({ status: 'error', mensaje: String(e?.message || e) });
+  }
+}
+
 function normalizeImageSource(content, mimetype) {
   if (!content) return null;
   if (typeof content === 'string' && content.startsWith('data:')) return content;
@@ -142,17 +180,19 @@ async function respondWithConversation({
   channel = 'whatsapp',
   user_id,
   rawUserId,
+  user_name,
   conversation_id,
   messages,
   promptId = process.env.PROMPT_ID
 }) {
   if (!conversation_id) throw new Error('conversation_id requerido');
-  const tools = buildToolSchemas(); // Solo contiene 'notificar_humano'
+  const tools = buildToolSchemas(); // 'notificar_humano' y 'pago_pendiente'
 
   const input = mapBatchToTurn(messages);
   if (!input.length) throw new Error('EMPTY_INPUT');
 
   let hops = 0;
+  let suppressed = false;
   let inputList = input.slice();
 
   while (true) {
@@ -172,7 +212,8 @@ async function respondWithConversation({
         text: resp.output_text ?? '',
         responseId: resp.id,
         conversationId: resp?.conversation?.id || conversation_id,
-        usage: resp.usage ?? null
+        usage: resp.usage ?? null,
+        suppressed
       };
     }
 
@@ -180,13 +221,16 @@ async function respondWithConversation({
     for (const call of calls) {
       const { name, call_id, arguments: argsJSON } = call;
       let out = '';
+      let suprimir = false;
       try {
         // --- CORRECCIÓN 4: Se elimina la lógica para llamar a exec_get_tasa_bcv ---
         if (name === 'notificar_humano') out = await exec_notificar_humano({ channel, rawUserId, argsJSON });
+        else if (name === 'pago_pendiente') { out = await exec_pago_pendiente({ rawUserId, argsJSON, userName: user_name }); suprimir = true; }
         else out = JSON.stringify({ error: `Tool ${name} no implementada` });
       } catch (e) {
         out = JSON.stringify({ error: String(e?.message || e) });
       }
+      if (suprimir) suppressed = true;
       outputs.push({ type: 'function_call_output', call_id, output: out });
     }
 

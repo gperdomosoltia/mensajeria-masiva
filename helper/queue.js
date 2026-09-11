@@ -68,7 +68,11 @@ async function processUserQueueInternal(userId, userName, onQueueProcessedCallba
             ok: result?.ok, response_id: result?.responseId, conversation_id: result?.conversationId
         });
 
-        const replyText = (result?.ok && result?.text) ? result.text.trim() : "Lo siento, no pude procesar tu solicitud en este momento.";
+        // Cuando una tool ya le respondió al cliente (ej. pago_pendiente manda el acuse
+        // y pausa el bot), no se manda nada más: ni el texto del modelo ni el de respaldo.
+        const replyText = result?.suppressed
+            ? null
+            : ((result?.ok && result?.text) ? result.text.trim() : "Lo siento, no pude procesar tu solicitud en este momento.");
 
         if (onQueueProcessedCallback) {
             await onQueueProcessedCallback(rawUserId, replyText, historyEntryId, result);

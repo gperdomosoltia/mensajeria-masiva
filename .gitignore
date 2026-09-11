@@ -15,3 +15,6 @@ npm-debug.log*
 
 # Base de datos local de RuVector (herramienta local, no del proyecto)
 ruvector.db
+
+# Workspace local del proceso de ejecución de planes (scratch, no del proyecto)
+.superpowers/

@@ -141,13 +141,14 @@ async function getCompleteHistory(userId) {
 async function saveSilentMessage(data) {
     try {
         const nuevoMensaje = new History({
-            user: data.user,         
+            user: data.user,
             phone: data.phone,       // Guarda el número real
             name: data.name,         // Guarda el nombre del usuario
-            message: data.message,   
-            type: data.type,         
+            message: data.message,
+            type: data.type,
             status: data.status,     // Se guarda como 'ignored_by_bot'
-            read: false,             
+            gcs_objectKey: data.gcs_objectKey, // I7: recuperable desde el historial (ej. comprobante de pago)
+            read: false,
             date: new Date(),
             dateFormat: new Date().toLocaleDateString('es-ES')
         });

@@ -74,6 +74,19 @@ async function processUserQueueInternal(userId, userName, onQueueProcessedCallba
             ? null
             : ((result?.ok && result?.text) ? result.text.trim() : "Lo siento, no pude procesar tu solicitud en este momento.");
 
+        // I1: si se suprime la respuesta, `replyText` queda null y el callback de
+        // index.js (que solo actualiza el historial cuando hay `reply`) nunca cierra
+        // esta entrada: se queda en 'processing_with_response_api' para siempre y el
+        // dashboard la cuenta como "requiere atención". Se cierra acá mismo, en un
+        // estado terminal, dejando constancia de que el acuse lo mandó el flujo de pago.
+        if (result?.suppressed) {
+            await mongoController.updateHistoryEntry(historyEntryId, {
+                status: 'responded',
+                responseBy: 'bot',
+                response: 'Acuse enviado por el flujo de pago (pago_pendiente); sin respuesta de texto del modelo.'
+            });
+        }
+
         if (onQueueProcessedCallback) {
             await onQueueProcessedCallback(rawUserId, replyText, historyEntryId, result);
         }

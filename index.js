@@ -23,6 +23,7 @@ const Campaign = require('./models/campaignModel');
 const { requireApiKey } = require('./helper/requireApiKey.js');
 const PaymentReview = require('./models/paymentReviewModel.js');
 const { crearServicioPagos } = require('./services/payment.service.js');
+const { crearEntregaDeRespuesta } = require('./services/replyDelivery.js');
 const { esComprobante } = require('./services/payment.detector.js');
 
 // whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
@@ -213,6 +214,13 @@ async function enviarMensajeWhatsapp(rawUserId, message) {
     }
 }
 
+// Cierre del turno en el historial. El estado depende de si la respuesta llegó de
+// verdad al cliente, no de que el envío no haya lanzado.
+const entregarRespuesta = crearEntregaDeRespuesta({
+    enviarMensajeWhatsapp,
+    updateHistoryEntry: mongoController.updateHistoryEntry
+});
+
 // --- Notificador de Agentes de Ventas ---
 const handleAgentNotification = createNotifier({
     client,
@@ -397,18 +405,7 @@ client.on('message', async msg => {
         // =================================================================
         // 🟢 BOT ENCENDIDO: La IA vuelve a responder
         // =================================================================
-        queue.addMessageToQueue(chat, userId, userName, rawUserId, messagePart, async (to, reply, historyId, result) => {
-            if (reply && reply.trim() !== '') {
-                await enviarMensajeWhatsapp(to, reply);
-                await mongoController.updateHistoryEntry(historyId, { 
-                    response: reply, 
-                    status: "responded",
-                    promptTokens: result?.usage?.input_tokens,
-                    completionTokens: result?.usage?.output_tokens,
-                    totalTokens: result?.usage?.total_tokens
-                });
-            }
-        });
+        queue.addMessageToQueue(chat, userId, userName, rawUserId, messagePart, entregarRespuesta);
 
     } catch (err) {
         console.error(`❌ Error procesando mensaje de ${userId}:`, err);

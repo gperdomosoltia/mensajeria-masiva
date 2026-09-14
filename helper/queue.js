@@ -6,7 +6,10 @@ const { createConversation } = require('../services/ai/conversations');
 const { respondWithConversation } = require('../services/ai/respond');
 
 const userMessageQueues = new Map();
-const QUEUE_TIMEOUT_MS = 20000; // 5 segundos
+// Ventana de agrupación: los mensajes que el cliente mande dentro de estos 20 s se
+// responden juntos, en un solo turno. Durante toda la ventana el turno está abierto y
+// el dashboard lo muestra como "Procesando".
+const QUEUE_TIMEOUT_MS = 20000;
 
 function getTextualRepresentationForHistory(queuedParts) {
     if (!queuedParts || queuedParts.length === 0) return "[COLA VACÍA]";
@@ -115,6 +118,11 @@ async function addMessageToQueue(chat, userId, userName, rawUserId, messagePartD
         const now = new Date();
         const initialLogData = {
             user: userId,
+            // Sin nombre ni teléfono acá, la lista de conversaciones del dashboard se queda
+            // sin nombre en cuanto el último mensaje es uno recién llegado: agrupa por
+            // usuario y toma el nombre del mensaje más reciente.
+            name: userName,
+            phone: rawUserId,
             message: messagePartData.content,
             gcs_objectKey: messagePartData?.gcs_objectKey,
             type: messagePartData.originalMessageType,

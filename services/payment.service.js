@@ -60,7 +60,7 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
         }
 
         const pausa = await pauseBotForUser(String(userId), horas, `pago_${motivo}`);
-        if (!pausa || !pausa.until) {
+        if (!pausa) {
             console.error(`❌ [PAGO] No se pudo pausar el bot para ${userId}; se descarta el caso recién creado.`);
             try {
                 review.status = 'expired';
@@ -73,8 +73,13 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
         }
 
         // Se refleja en el caso el deadline real de la pausa (por si difiere del estimado).
-        review.pauseUntil = pausa.until;
-        try { await review.save(); } catch (e) { console.error('❌ [PAGO] No se pudo actualizar pauseUntil en el caso:', e.message); }
+        // Una pausa manual vigente manda sobre esta y no trae `until` (es indefinida): ahí
+        // se deja el deadline estimado, y el dashboard no expira el caso mientras el asesor
+        // mantenga el chat pausado a mano.
+        if (pausa.until) {
+            review.pauseUntil = pausa.until;
+            try { await review.save(); } catch (e) { console.error('❌ [PAGO] No se pudo actualizar pauseUntil en el caso:', e.message); }
+        }
 
         // `acked` solo queda en true si el envío RESOLVIÓ estrictamente `true`: es lo que
         // le dice a services/ai/respond.js si de verdad puede suprimir la respuesta del
@@ -108,7 +113,8 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
             console.error('❌ [PAGO] No se pudo avisar a los agentes:', e.message);
         }
 
-        console.log(`[PAGO] Caso creado para ${userId} (${motivo}); bot pausado hasta ${pausa.until.toISOString()}.`);
+        const hastaLog = pausa.until ? pausa.until.toISOString() : 'que el asesor lo reanude (pausa manual)';
+        console.log(`[PAGO] Caso creado para ${userId} (${motivo}); bot pausado hasta ${hastaLog}.`);
         return { created: true, review, acked };
     };
 }

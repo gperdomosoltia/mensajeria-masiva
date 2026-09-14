@@ -3,6 +3,7 @@ const History = require('../models/historyModel');
 const Subscription = require('../models/suscriptionModel');
 const BotClient = require('../models/botClientModel'); // MANTENIDO
 const BotPause = require('../models/botPauseModel');
+const { crearControlDePausa } = require('../services/botPause');
 require('dotenv').config();
 
 const MONGO_URI = process.env.MONGO_URI;
@@ -48,50 +49,11 @@ function isUserWhitelisted(userId, botConfig) {
     return botConfig && botConfig.white_list && botConfig.white_list.includes(userId);
 }
 
-// --- Pausa temporal del bot por usuario ---
-// Se activa al notificar a un agente humano: el bot calla mientras la persona
-// atiende el chat y se reactiva solo al vencer el plazo.
+// --- Pausa del bot por usuario ---
+// La lógica vive en services/botPause.js para poder probarla sin Mongo; acá solo
+// se le inyecta el modelo real y se reexporta con los mismos nombres de siempre.
 
-const DEFAULT_PAUSE_HOURS = 2;
-
-async function pauseBotForUser(userId, hours, reason) {
-    const horas = Number(hours ?? process.env.BOT_PAUSE_HOURS ?? DEFAULT_PAUSE_HOURS);
-    if (!userId || !Number.isFinite(horas) || horas <= 0) return null;
-    const until = new Date(Date.now() + horas * 60 * 60 * 1000);
-    try {
-        return await BotPause.findOneAndUpdate(
-            { user: String(userId) },
-            { $set: { user: String(userId), until, reason: reason || 'notificacion_agente' } },
-            { upsert: true, new: true }
-        );
-    } catch (error) {
-        console.error('❌ Error creando la pausa del bot:', error.message);
-        return null;
-    }
-}
-
-// Devuelve la pausa vigente o null. El TTL de Mongo borra el documento al vencer,
-// pero puede tardar hasta un minuto: por eso se compara la fecha igual.
-async function getBotPause(userId) {
-    if (!userId) return null;
-    try {
-        const pause = await BotPause.findOne({ user: String(userId) });
-        if (!pause || pause.until.getTime() <= Date.now()) return null;
-        return pause;
-    } catch (error) {
-        return null;
-    }
-}
-
-async function resumeBotForUser(userId) {
-    if (!userId) return false;
-    try {
-        await BotPause.deleteOne({ user: String(userId) });
-        return true;
-    } catch (error) {
-        return false;
-    }
-}
+const { pauseBotForUser, getBotPause, resumeBotForUser, estadoPausa } = crearControlDePausa({ BotPause });
 
 // --- Funciones para Subscription ---
 
@@ -172,6 +134,7 @@ module.exports = {
     pauseBotForUser,
     getBotPause,
     resumeBotForUser,
+    estadoPausa,
     findSubscription,
     createSubscription,
     updateSubscription,

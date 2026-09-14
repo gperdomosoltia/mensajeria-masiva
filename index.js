@@ -267,11 +267,12 @@ client.on('message', async msg => {
 
         // --- LÓGICA BOT CLIENT ---
         const botConfig = await mongoController.getBotClientConfig();
-        
-        // Si no hay config o el bot está apagado globalmente
-        if (!botConfig || !mongoController.isBotActive(botConfig)) return;
-        
-        // Verificación de Blacklist
+
+        // Sin configuración no hay nada que aplicar: no es una pausa, es un fallo de setup.
+        if (!botConfig) return;
+
+        // Blacklist: es un baneo permanente, no una pausa. Por eso queda fuera del gate
+        // de pausa y el mensaje ni se guarda.
         if (mongoController.isUserBlacklisted(userId, botConfig)) {
             if (rawUserId !== process.env.AGENTE) {
                 console.log(`🚫 Usuario ${userId} en lista negra.`);
@@ -279,24 +280,36 @@ client.on('message', async msg => {
             }
         }
 
-        // Pausa temporal: ya se notificó a un agente de ventas y el humano está
-        // atendiendo este chat. Se registra el mensaje pero el bot no responde
-        // hasta que venza la pausa (BOT_PAUSE_HOURS).
-        const pausa = await mongoController.getBotPause(userId);
-        if (pausa) {
-            console.log(`⏸️ Bot en pausa para ${userId} hasta ${pausa.until.toISOString()} (atiende un humano).`);
+        // El contacto se resuelve antes del gate para poder guardar el nombre también en
+        // los mensajes que llegan con el bot pausado; si no, la lista de conversaciones
+        // del dashboard se queda sin nombre en cuanto el último mensaje es uno de esos.
+        let contact = null;
+        try {
+            contact = await msg.getContact();
+        } catch (err) {
+            console.warn(`⚠️  No se pudo obtener el contacto de ${userId}; se sigue sin nombre.`);
+        }
+        const userName = (contact && contact.pushname) || "Usuario";
+
+        // Gate único de pausa: cubre el apagón global (bot_status) y la pausa de este
+        // chat, sea manual, por reserva o por pago. En todos los casos el mensaje se
+        // guarda para que el asesor lo vea en el dashboard; antes el apagón global lo
+        // descartaba sin dejar rastro.
+        const pausa = await mongoController.estadoPausa(userId, botConfig);
+        if (pausa.pausado) {
+            const hasta = pausa.until ? `hasta ${pausa.until.toISOString()}` : 'sin fecha de vencimiento';
+            console.log(`⏸️ Bot pausado para ${userId} (${pausa.motivo}, ${hasta}).`);
             await mongoController.saveSilentMessage({
                 user: userId,
                 phone: rawUserId,
+                name: userName,
                 message: msg.body || `[${msg.type}]`,
                 type: msg.type,
-                status: 'paused_for_human'
+                status: pausa.motivo === 'bot_apagado' ? 'bot_off' : 'paused_for_human'
             });
             return;
         }
 
-        const contact = await msg.getContact();
-        const userName = contact.pushname || "Usuario";
 
         // `chat` solo alimenta el indicador "escribiendo…" (helper/queue.js), que ya
         // valida que exista. Si getChat() falla, se responde igual sin indicador.
@@ -424,11 +437,34 @@ app.post('/notificar_agente', requireApiKey, async (req, res) => {
 });
 
 // Reactivar el bot para un usuario antes de que venza la pausa automática.
+// Reanuda el bot para un chat. Sin `force` respeta la pausa manual del asesor: el
+// botón "Pago procesado" del dashboard confirma el pago y avisa al cliente, pero no le
+// devuelve la palabra al bot en un chat que alguien silenció a propósito. Devuelve
+// siempre success:true; `resumed` dice si la pausa se levantó de verdad.
 app.post('/bot/reanudar', requireApiKey, async (req, res) => {
-    const { user } = req.body;
+    const { user, force } = req.body;
     if (!user) return res.status(400).json({ success: false, error: "Falta 'user'" });
-    const ok = await mongoController.resumeBotForUser(String(user).split('@')[0]);
-    res.json({ success: ok });
+    const resultado = await mongoController.resumeBotForUser(String(user).split('@')[0], { force: force === true });
+    res.json({ success: true, ...resultado });
+});
+
+// Pausa manual desde el dashboard. Sin `hours` queda indefinida: solo la levanta
+// /bot/reanudar con force. Manda sobre las pausas automáticas de reserva y pago.
+app.post('/bot/pausar', requireApiKey, async (req, res) => {
+    const { user, hours, by } = req.body;
+    if (!user) return res.status(400).json({ success: false, error: "Falta 'user'" });
+    const horas = hours == null ? null : Number(hours);
+    if (horas != null && (!Number.isFinite(horas) || horas <= 0)) {
+        return res.status(400).json({ success: false, error: "'hours' debe ser un número de horas positivo" });
+    }
+    const pausa = await mongoController.pauseBotForUser(
+        String(user).split('@')[0],
+        horas,
+        'manual',
+        { manual: true, by: by ? String(by) : null }
+    );
+    if (!pausa) return res.status(500).json({ success: false, error: 'no_se_pudo_pausar' });
+    res.json({ success: true, until: pausa.until ?? null, manual: pausa.manual === true });
 });
 
 // Envío suelto a los agentes de ventas. Lo usa el dashboard para los recordatorios

@@ -210,3 +210,20 @@ test('el aviso a agentes no pisa la pausa que puso el pago (I2)', async () => {
     if (originalAgente2 === undefined) delete process.env.AGENTE_VENTAS_PHONE_2; else process.env.AGENTE_VENTAS_PHONE_2 = originalAgente2;
   }
 });
+
+test('con una pausa manual vigente el caso se crea igual y conserva el deadline estimado', async () => {
+  // La pausa manual manda: pauseBotForUser devuelve la que ya estaba, indefinida y sin
+  // `until`. El caso no debe descartarse por eso — el asesor necesita el botón "Pago
+  // procesado" igual — y pauseUntil se queda con el estimado de PAGO_PAUSE_HOURS.
+  const d = deps({
+    pauseBotForUser: async (user, horas, reason) => ({ user, horas, reason, until: null, manual: true })
+  });
+  const registrar = crearServicioPagos(d);
+  const res = await registrar({ userId: '584121112233', rawUserId: '584121112233@c.us', userName: 'Ana', motivo: 'comprobante', gcs_objectKey: null });
+
+  assert.equal(res.created, true);
+  assert.equal(d.creados.length, 1);
+  assert.equal(d.creados[0].status, 'pending');
+  assert.ok(d.creados[0].pauseUntil instanceof Date, 'conserva el deadline estimado');
+  assert.ok(d.creados[0].pauseUntil.getTime() > Date.now());
+});

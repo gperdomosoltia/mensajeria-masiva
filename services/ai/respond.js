@@ -3,6 +3,9 @@ const OpenAI = require('openai');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const { getNotifier } = require('../../controller/notifier.registry');
 const { getPagoRegistrar } = require('../../controller/pago.registry');
+// Se requiere directo: guardarCedula solo necesita el modelo, no el cliente de WhatsApp,
+// así que no hace falta el registro que usan las otras dos tools.
+const mongoController = require('../../controller/mongo.controller');
 
 // ---------- helpers ----------
 function collectFunctionCalls(res) {
@@ -76,8 +79,60 @@ function buildToolSchemas() {
         required: ['motivo'],
         additionalProperties: true
       }
+    },
+    {
+      type: 'function',
+      name: 'registrar_cedula',
+      description: [
+        'Guarda la cédula o el RIF del cliente, que es como se le identifica para los pagos.',
+        'LLÁMALA EN CUANTO el cliente te dé el número, dentro del flujo de reserva,',
+        'inscripción o pago. Manda el valor tal como lo dijo, con su letra si la dio.',
+        'El sistema te responde si quedó guardada: si dice que falta el tipo, pregúntale si',
+        'es V o E y vuelve a llamarla con la letra; si dice que el formato no sirve, pídele',
+        'que lo repita. Nunca le pidas una foto del documento, solo el número.',
+        'No anuncies que estás usando una herramienta.'
+      ].join(' '),
+      parameters: {
+        type: 'object',
+        properties: {
+          cedula: {
+            type: 'string',
+            description: 'Cédula o RIF tal como lo dio el cliente, ej. "V-12345678", "12345678" o "J-12345678-9".'
+          }
+        },
+        required: ['cedula'],
+        additionalProperties: true
+      }
     }
   ];
+}
+
+const MENSAJES_CEDULA = {
+  falta_tipo: 'Falta saber si es V (venezolano) o E (extranjero). Pregúntaselo con naturalidad y vuelve a llamarme con la letra.',
+  formato: 'Ese valor no tiene forma de cédula ni de RIF. Pídele que lo repita, sin insistir si no quiere darlo.',
+  vacio: 'No llegó ningún número. Pídeselo al cliente.',
+  sin_usuario: 'No se pudo identificar el chat; sigue la conversación sin pedirlo de nuevo.',
+  error_al_guardar: 'No se pudo guardar ahora. Sigue la conversación con naturalidad y no insistas.'
+};
+
+async function exec_registrar_cedula({ rawUserId, argsJSON }) {
+  let a = {};
+  try { a = argsJSON ? JSON.parse(argsJSON) : {}; } catch { a = {}; }
+  const valor = a.cedula || a.documento || a.rif || a.numero || '';
+
+  const r = await mongoController.guardarCedula({ user: rawUserId, cedula: valor, origen: 'cliente' });
+  if (r.ok) {
+    return JSON.stringify({
+      status: 'success',
+      cedula: r.valor,
+      mensaje: 'Cédula guardada. Sigue con naturalidad; no repitas el número ni lo confirmes dos veces.'
+    });
+  }
+  return JSON.stringify({
+    status: 'error',
+    motivo: r.motivo,
+    mensaje: MENSAJES_CEDULA[r.motivo] || 'No se pudo guardar.'
+  });
 }
 
 async function exec_notificar_humano({ channel, rawUserId, argsJSON }) {
@@ -247,6 +302,7 @@ async function respondWithConversation({
           out = r.out;
           suprimir = r.suppress;
         }
+        else if (name === 'registrar_cedula') out = await exec_registrar_cedula({ rawUserId, argsJSON });
         else out = JSON.stringify({ error: `Tool ${name} no implementada` });
       } catch (e) {
         out = JSON.stringify({ error: String(e?.message || e) });

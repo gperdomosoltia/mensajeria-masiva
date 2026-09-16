@@ -430,6 +430,21 @@ client.on('message', async msg => {
     }
 });
 
+// Cédula o RIF escrito por un asesor desde el dashboard. Pasa por la misma
+// normalización que la que da el cliente, para que no existan dos formas del mismo dato.
+app.post('/cliente/cedula', requireApiKey, async (req, res) => {
+    const { user, cedula, by } = req.body;
+    if (!user) return res.status(400).json({ success: false, error: "Falta 'user'" });
+    const resultado = await mongoController.guardarCedula({
+        user: String(user),
+        cedula,
+        origen: 'asesor',
+        por: by ? String(by) : null
+    });
+    if (!resultado.ok) return res.status(400).json({ success: false, error: resultado.motivo });
+    res.json({ success: true, cedula: resultado.valor, tipo: resultado.tipo });
+});
+
 // --- Mensajes que el asesor escribe a mano ---
 // `client.on('message')` solo entrega entrantes, así que sin esto lo que responde una
 // persona desde el teléfono del negocio nunca llegaba al historial y en el dashboard el

@@ -4,6 +4,7 @@ const Subscription = require('../models/suscriptionModel');
 const BotClient = require('../models/botClientModel'); // MANTENIDO
 const BotPause = require('../models/botPauseModel');
 const { crearControlDePausa } = require('../services/botPause');
+const { crearRegistroDeCedula } = require('../services/identity');
 require('dotenv').config();
 
 const MONGO_URI = process.env.MONGO_URI;
@@ -54,6 +55,11 @@ function isUserWhitelisted(userId, botConfig) {
 // se le inyecta el modelo real y se reexporta con los mismos nombres de siempre.
 
 const { pauseBotForUser, getBotPause, resumeBotForUser, estadoPausa } = crearControlDePausa({ BotPause });
+
+// --- Cédula / RIF del cliente ---
+// La normalización vive en services/identity.js para poder probarla sin Mongo.
+
+const { guardarCedula } = crearRegistroDeCedula({ Subscription });
 
 // --- Funciones para Subscription ---
 
@@ -166,6 +172,7 @@ module.exports = {
     findSubscription,
     createSubscription,
     updateSubscription,
+    guardarCedula,
     logHistory,
     updateHistoryEntry,
     getCompleteHistory,

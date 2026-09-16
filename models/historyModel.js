@@ -19,8 +19,10 @@ const historySchema = new mongoose.Schema({
         required: false
     },
     message: {
+        // Opcional: un mensaje que el asesor escribe a mano desde el WhatsApp del negocio
+        // se guarda como turno sin entrada del cliente, solo con `response`.
         type: String,
-        required: true
+        required: false
     },
     gcs_objectKey: {
         type: String,

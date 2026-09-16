@@ -24,6 +24,7 @@ const { requireApiKey } = require('./helper/requireApiKey.js');
 const PaymentReview = require('./models/paymentReviewModel.js');
 const { crearServicioPagos } = require('./services/payment.service.js');
 const { crearEntregaDeRespuesta } = require('./services/replyDelivery.js');
+const { crearRegistroDeEnviosPropios, crearCapturaDeAsesor } = require('./services/agentCapture.js');
 const { esComprobante } = require('./services/payment.detector.js');
 
 // whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
@@ -201,6 +202,21 @@ client.on('disconnected', (reason) => {
         wipeSessionAndExit('LOGOUT');
     }
 });
+
+// Envoltura única de `client.sendMessage`: anota todo lo que manda el bot para que la
+// captura de mensajes del asesor no confunda los suyos con los nuestros. Envolver el
+// cliente cubre de una todas las salidas —respuestas, acuses de pago, avisos a los
+// agentes y campañas— sin repetir la anotación en cada sitio de envío.
+const registroEnviosPropios = crearRegistroDeEnviosPropios();
+const enviarOriginal = client.sendMessage.bind(client);
+client.sendMessage = async (chatId, content, options) => {
+    // El texto se anota ANTES de enviar: WhatsApp a veces emite `message_create` antes de
+    // que esta promesa resuelva, y para entonces el id todavía no existe.
+    if (typeof content === 'string') registroEnviosPropios.anotarTexto(String(chatId), content);
+    const enviado = await enviarOriginal(chatId, content, options);
+    registroEnviosPropios.anotarId(enviado?.id?._serialized);
+    return enviado;
+};
 
 // --- Helper para enviar mensajes ---
 async function enviarMensajeWhatsapp(rawUserId, message) {
@@ -412,6 +428,27 @@ client.on('message', async msg => {
     } finally {
         processingUsers.delete(rawUserId);
     }
+});
+
+// --- Mensajes que el asesor escribe a mano ---
+// `client.on('message')` solo entrega entrantes, así que sin esto lo que responde una
+// persona desde el teléfono del negocio nunca llegaba al historial y en el dashboard el
+// turno del asesor quedaba como un hueco.
+const capturarMensajeSaliente = crearCapturaDeAsesor({
+    registro: registroEnviosPropios,
+    destinatariosVentas,
+    guardarMensajeAsesor: mongoController.saveAgentMessage
+});
+
+client.on('message_create', (msg) => {
+    if (!msg || msg.fromMe !== true) return;
+    // Margen antes de decidir: en los envíos propios sin texto (los medios de campaña) el
+    // id recién se anota cuando `sendMessage` resuelve, y eso puede ocurrir después de que
+    // WhatsApp ya emitió este evento.
+    setTimeout(() => {
+        capturarMensajeSaliente(msg).catch((error) =>
+            console.error('❌ Error capturando un mensaje saliente:', error.message));
+    }, 2000);
 });
 
 // --- Endpoints API ---

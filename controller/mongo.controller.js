@@ -123,6 +123,34 @@ async function saveSilentMessage(data) {
     }
 }
 
+/**
+ * Guarda lo que un asesor respondió a mano desde el WhatsApp del negocio.
+ *
+ * Va como turno propio, sin mensaje del cliente: el texto vive en `response` para que el
+ * dashboard lo dibuje del lado del negocio, con la etiqueta "Agente" que ya existe.
+ */
+async function saveAgentMessage({ user, phone, text, type }) {
+    try {
+        const ahora = new Date();
+        const nuevoMensaje = new History({
+            user,
+            phone,
+            response: text,
+            responseBy: 'agent',
+            type: type || 'chat',
+            status: 'agent_reply',
+            read: true,   // lo escribió el equipo: no es algo pendiente de leer
+            date: ahora,
+            dateFormat: ahora.toLocaleDateString('es-ES')
+        });
+        await nuevoMensaje.save();
+        return nuevoMensaje._id;
+    } catch (error) {
+        console.error('❌ Error guardando el mensaje del asesor:', error.message);
+        return null;
+    }
+}
+
 // 👇 SE EXPORTA LA NUEVA FUNCIÓN AL FINAL
 module.exports = {
     connectDB,
@@ -141,5 +169,6 @@ module.exports = {
     logHistory,
     updateHistoryEntry,
     getCompleteHistory,
-    saveSilentMessage 
+    saveSilentMessage,
+    saveAgentMessage
 };

@@ -6,7 +6,12 @@
 // hubiera recibido nada — y el dashboard lo mostraba con el tag verde "Respondido".
 // El estado solo avanza a `responded` cuando el envío resolvió estrictamente `true`.
 
-function crearEntregaDeRespuesta({ enviarMensajeWhatsapp, updateHistoryEntry }) {
+// Términos que el bot no puede nombrar por chat: los precios de suplementos se manejan
+// con una tasa distinta a la del BCV y mencionarla acarrea un problema regulatorio. Esto
+// es la red de abajo; el control principal es la instrucción del prompt.
+const TERMINOS_PROHIBIDOS = /(usdt|binance|tether|tasa\s+paralela|d[oó]lar\s+paralelo|monitor\s+d[oó]lar)/i;
+
+function crearEntregaDeRespuesta({ enviarMensajeWhatsapp, updateHistoryEntry, alBloquear }) {
     /**
      * @param {string} to        JID del destinatario.
      * @param {string|null} reply Texto a enviar; vacío o null significa que no hay nada que decir.
@@ -16,6 +21,25 @@ function crearEntregaDeRespuesta({ enviarMensajeWhatsapp, updateHistoryEntry }) 
      */
     return async function entregarRespuesta(to, reply, historyId, result) {
         if (!reply || reply.trim() === '') return { sent: false, reason: 'sin_texto' };
+
+        if (TERMINOS_PROHIBIDOS.test(reply)) {
+            console.warn(`🚫 Respuesta bloqueada para ${to}: nombraba un término prohibido.`);
+            // Se guarda lo que estuvo a punto de decir: sin eso no hay forma de revisar
+            // por qué el cliente quedó esperando a un asesor.
+            await updateHistoryEntry(historyId, {
+                response: reply,
+                status: 'blocked_terms',
+                responseBy: 'bot'
+            });
+            // El caso deriva la conversación a un asesor, que es donde debía terminar.
+            // Un fallo acá no puede hacer que el texto salga igual.
+            try {
+                if (typeof alBloquear === 'function') await alBloquear({ to, reply });
+            } catch (error) {
+                console.error('❌ No se pudo derivar la conversación tras el bloqueo:', error.message);
+            }
+            return { sent: false, reason: 'terminos_prohibidos' };
+        }
 
         let enviado = false;
         try {

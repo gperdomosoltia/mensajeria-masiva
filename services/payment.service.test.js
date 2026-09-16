@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { crearServicioPagos, ACK_COMPROBANTE } = require('./payment.service');
+const { crearServicioPagos, ACK_COMPROBANTE, ACK_SUPLEMENTOS } = require('./payment.service');
 const { createNotifier } = require('../controller/notify.service');
 
 function deps(overrides = {}) {
@@ -226,4 +226,42 @@ test('con una pausa manual vigente el caso se crea igual y conserva el deadline 
   assert.equal(d.creados[0].status, 'pending');
   assert.ok(d.creados[0].pauseUntil instanceof Date, 'conserva el deadline estimado');
   assert.ok(d.creados[0].pauseUntil.getTime() > Date.now());
+});
+
+test('una consulta de suplementos abre un caso de su tipo, con acuse neutro', async () => {
+  // El acuse no nombra suplementos ni tasas: el bot no debe dejar rastro del tema, que es
+  // justo lo que se quiere sacar de su boca.
+  const d = deps();
+  const registrar = crearServicioPagos(d);
+  const res = await registrar({ userId: '584121112233', rawUserId: '584121112233@c.us', userName: 'Ana', tipo: 'suplementos', motivo: 'suplementos' });
+
+  assert.equal(res.created, true);
+  assert.equal(res.acked, true);
+  assert.equal(d.creados[0].tipo, 'suplementos');
+  assert.equal(d.creados[0].motivo, 'suplementos');
+  assert.equal(d.enviados[0].mensaje, ACK_SUPLEMENTOS);
+  assert.ok(!/USDT|Binance|suplement/i.test(d.enviados[0].mensaje), 'el acuse no nombra el tema ni la tasa');
+  assert.equal(d.avisos[0].tipo_notificacion, 'SUPLEMENTOS');
+  assert.equal(d.pausas[0].reason, 'suplementos');
+});
+
+test('sin tipo explícito el caso sigue siendo de pago', async () => {
+  const d = deps();
+  const registrar = crearServicioPagos(d);
+  await registrar({ userId: '584121112233', rawUserId: '584121112233@c.us', userName: 'Ana', motivo: 'comprobante' });
+
+  assert.equal(d.creados[0].tipo, 'pago');
+  assert.equal(d.avisos[0].tipo_notificacion, 'PAGO');
+});
+
+test('con un caso de pago abierto, una consulta de suplementos no abre otro', async () => {
+  // Un asesor ya va en camino a ese chat: un segundo aviso solo genera ruido.
+  const d = deps();
+  d.PaymentReview.pendiente = { _id: 'existente', gcs_objectKey: null, pauseUntil: new Date(Date.now() + 3600_000), save: async () => {} };
+  const registrar = crearServicioPagos(d);
+  const res = await registrar({ userId: '584121112233', rawUserId: '584121112233@c.us', tipo: 'suplementos', motivo: 'suplementos' });
+
+  assert.equal(res.created, false);
+  assert.equal(d.creados.length, 0);
+  assert.equal(d.enviados.length, 0);
 });

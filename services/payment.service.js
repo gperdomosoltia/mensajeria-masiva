@@ -1,13 +1,40 @@
-// Registro de un pago por validar: acusa recibo al cliente, pausa el bot para ese
-// número y deja el caso en `payment_reviews` para que el dashboard lo trabaje.
+// Casos que esperan a un asesor: acusa recibo al cliente, pausa el bot para ese número y
+// deja el caso en `payment_reviews` para que el dashboard lo trabaje.
 // Las dependencias se inyectan para poder testear sin Mongo ni WhatsApp.
+//
+// Empezó siendo solo para pagos. Las consultas de suplementos usan exactamente la misma
+// maquinaria —pausa, recordatorio cada 20 min, push de escritorio y tarjeta en el panel—
+// y se distinguen con `tipo`.
 
 const ACK_COMPROBANTE = 'Recibí tu comprobante ✅ Un asesor lo valida y te confirma por aquí mismo. Gracias por avisar.';
 const ACK_DATOS_PAGO = 'Con gusto: un asesor te escribe por aquí en un momento con los datos de pago y valida tu mensualidad.';
+// Deliberadamente no nombra el tema ni ninguna tasa: sacar eso de la boca del bot es el
+// punto de todo este flujo.
+const ACK_SUPLEMENTOS = 'Con gusto: un asesor te atiende esa consulta en un momento y te da todos los detalles.';
+
+const CASOS = {
+    pago: {
+        etiqueta: 'PAGO',
+        tipoNotificacion: 'PAGO',
+        reason: (motivo) => `pago_${motivo}`,
+        ack: (motivo) => (motivo === 'comprobante' ? ACK_COMPROBANTE : ACK_DATOS_PAGO),
+        descripcion: (motivo) => (motivo === 'comprobante'
+            ? 'El cliente envió un comprobante de pago y espera confirmación.'
+            : 'El cliente pidió los datos para pagar la mensualidad.')
+    },
+    suplementos: {
+        etiqueta: 'SUPLEMENTOS',
+        tipoNotificacion: 'SUPLEMENTOS',
+        reason: () => 'suplementos',
+        ack: () => ACK_SUPLEMENTOS,
+        descripcion: () => 'El cliente preguntó por suplementos. El bot no dio precio ni tasa: los cotiza un asesor.'
+    }
+};
 
 function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhatsapp, notificarAgentes }) {
-    return async function registrarPagoPendiente({ userId, rawUserId, userName = null, motivo, gcs_objectKey = null }) {
+    return async function registrarCasoParaAsesor({ userId, rawUserId, userName = null, tipo = 'pago', motivo, gcs_objectKey = null }) {
         if (!userId || !rawUserId || !motivo) return { created: false, review: null, acked: false };
+        const caso = CASOS[tipo] || CASOS.pago;
 
         // El cliente puede mandar tres capturas seguidas: un solo caso por cliente.
         let existente = await PaymentReview.findOne({ user: String(userId), status: 'pending' });
@@ -47,6 +74,7 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
                 phone: rawUserId,
                 name: userName,
                 status: 'pending',
+                tipo: CASOS[tipo] ? tipo : 'pago',
                 motivo,
                 gcs_objectKey,
                 detectedAt: new Date(),
@@ -59,7 +87,7 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
             return { created: false, review: null, acked: false };
         }
 
-        const pausa = await pauseBotForUser(String(userId), horas, `pago_${motivo}`);
+        const pausa = await pauseBotForUser(String(userId), horas, caso.reason(motivo));
         if (!pausa) {
             console.error(`❌ [PAGO] No se pudo pausar el bot para ${userId}; se descarta el caso recién creado.`);
             try {
@@ -89,7 +117,7 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
         // el acuse — hay que mirar el valor resuelto.
         let acked = false;
         try {
-            const enviado = await enviarMensajeWhatsapp(rawUserId, motivo === 'comprobante' ? ACK_COMPROBANTE : ACK_DATOS_PAGO);
+            const enviado = await enviarMensajeWhatsapp(rawUserId, caso.ack(motivo));
             acked = enviado === true;
             if (!acked) console.error(`❌ [PAGO] enviarMensajeWhatsapp no confirmó el envío del acuse a ${userId} (resolvió ${JSON.stringify(enviado)}).`);
         } catch (e) {
@@ -98,10 +126,8 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
 
         try {
             await notificarAgentes({
-                tipo_notificacion: 'PAGO',
-                descripcion: motivo === 'comprobante'
-                    ? 'El cliente envió un comprobante de pago y espera confirmación.'
-                    : 'El cliente pidió los datos para pagar la mensualidad.',
+                tipo_notificacion: caso.tipoNotificacion,
+                descripcion: caso.descripcion(motivo),
                 nombre_cliente: userName || '',
                 phone_number: rawUserId,
                 source: 'whatsapp',
@@ -114,9 +140,9 @@ function crearServicioPagos({ PaymentReview, pauseBotForUser, enviarMensajeWhats
         }
 
         const hastaLog = pausa.until ? pausa.until.toISOString() : 'que el asesor lo reanude (pausa manual)';
-        console.log(`[PAGO] Caso creado para ${userId} (${motivo}); bot pausado hasta ${hastaLog}.`);
+        console.log(`[${caso.etiqueta}] Caso creado para ${userId} (${motivo}); bot pausado hasta ${hastaLog}.`);
         return { created: true, review, acked };
     };
 }
 
-module.exports = { crearServicioPagos, ACK_COMPROBANTE, ACK_DATOS_PAGO };
+module.exports = { crearServicioPagos, ACK_COMPROBANTE, ACK_DATOS_PAGO, ACK_SUPLEMENTOS };

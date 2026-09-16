@@ -82,6 +82,27 @@ function buildToolSchemas() {
     },
     {
       type: 'function',
+      name: 'consulta_suplementos',
+      description: [
+        'Deriva a un asesor cualquier conversación sobre suplementos: precios, marcas,',
+        'presentaciones, disponibilidad, recomendaciones o simple interés en comprarlos.',
+        'LLÁMALA DE INMEDIATO en cuanto el tema aparezca, aunque el cliente no pregunte el',
+        'precio: basta con que quiera saber de suplementos. NUNCA des un precio, un monto,',
+        'una forma de pago ni ninguna tasa de cambio para suplementos.',
+        'No anuncies que estás usando una herramienta y no escribas nada después de llamarla:',
+        'el sistema ya le responde al cliente.'
+      ].join(' '),
+      parameters: {
+        type: 'object',
+        properties: {
+          descripcion: { type: 'string', description: 'Una frase con lo que preguntó el cliente.' }
+        },
+        required: [],
+        additionalProperties: true
+      }
+    },
+    {
+      type: 'function',
       name: 'registrar_cedula',
       description: [
         'Guarda la cédula o el RIF del cliente, que es como se le identifica para los pagos.',
@@ -114,6 +135,34 @@ const MENSAJES_CEDULA = {
   sin_usuario: 'No se pudo identificar el chat; sigue la conversación sin pedirlo de nuevo.',
   error_al_guardar: 'No se pudo guardar ahora. Sigue la conversación con naturalidad y no insistas.'
 };
+
+async function exec_consulta_suplementos({ rawUserId, userName }) {
+  const registrar = getPagoRegistrar();
+  if (!registrar) return { out: JSON.stringify({ status: 'error', mensaje: 'Servicio no disponible' }), suppress: false };
+
+  const jid = ensureWhatsAppJid(rawUserId);
+  try {
+    const resultado = await registrar({
+      userId: String(jid).split('@')[0],
+      rawUserId: jid,
+      userName: userName || null,
+      tipo: 'suplementos',
+      motivo: 'suplementos'
+    });
+    const acked = Boolean(resultado?.acked);
+    return {
+      out: JSON.stringify({
+        status: 'success',
+        mensaje: acked
+          ? 'Asesor notificado; ya se le respondió al cliente'
+          : 'Registrado, pero NO se le respondió al cliente: dile tú que un asesor lo atiende, sin dar precios ni tasas.'
+      }),
+      suppress: acked
+    };
+  } catch (e) {
+    return { out: JSON.stringify({ status: 'error', mensaje: String(e?.message || e) }), suppress: false };
+  }
+}
 
 async function exec_registrar_cedula({ rawUserId, argsJSON }) {
   let a = {};
@@ -299,6 +348,11 @@ async function respondWithConversation({
         if (name === 'notificar_humano') out = await exec_notificar_humano({ channel, rawUserId, argsJSON });
         else if (name === 'pago_pendiente') {
           const r = await exec_pago_pendiente({ rawUserId, argsJSON, userName: user_name });
+          out = r.out;
+          suprimir = r.suppress;
+        }
+        else if (name === 'consulta_suplementos') {
+          const r = await exec_consulta_suplementos({ rawUserId, userName: user_name });
           out = r.out;
           suprimir = r.suppress;
         }

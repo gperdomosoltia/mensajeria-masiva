@@ -9,7 +9,7 @@
 // AGENTE_VENTAS_PHONE y AGENTE_VENTAS_PHONE_2.
 const normalizeWhatsAppJid = require('../helper/normalizePhoneNumber.js');
 
-const TIPOS_PERMITIDOS = new Set(['RESERVA', 'INTERES', 'SOPORTE', 'RECLAMO', 'PAGO', 'OTRO']);
+const TIPOS_PERMITIDOS = new Set(['RESERVA', 'INTERES', 'SOPORTE', 'RECLAMO', 'PAGO', 'SUPLEMENTOS', 'OTRO']);
 
 // Valor de placeholder que traen las variables de Railway sin configurar.
 const PLACEHOLDER = 'REEMPLAZAR';

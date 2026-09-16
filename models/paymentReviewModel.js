@@ -8,7 +8,11 @@ const paymentReviewSchema = new mongoose.Schema({
     phone:         { type: String, required: true },              // JID completo (...@c.us)
     name:          { type: String, default: null },
     status:        { type: String, enum: ['pending', 'confirmed', 'expired'], default: 'pending' },
-    motivo:        { type: String, enum: ['comprobante', 'datos_pago'], required: true },
+    // Qué clase de caso es. Nació solo para pagos; los de suplementos usan la misma
+    // maquinaria (pausa, recordatorio cada 20 min, push y tarjeta en el panel) y se
+    // distinguen por acá. Los documentos viejos no traen el campo: por eso el default.
+    tipo:          { type: String, enum: ['pago', 'suplementos'], default: 'pago' },
+    motivo:        { type: String, enum: ['comprobante', 'datos_pago', 'suplementos'], required: true },
     gcs_objectKey: { type: String, default: null },
     detectedAt:    { type: Date, default: Date.now },
     pauseUntil:    { type: Date, required: true },

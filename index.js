@@ -234,7 +234,18 @@ async function enviarMensajeWhatsapp(rawUserId, message) {
 // verdad al cliente, no de que el envío no haya lanzado.
 const entregarRespuesta = crearEntregaDeRespuesta({
     enviarMensajeWhatsapp,
-    updateHistoryEntry: mongoController.updateHistoryEntry
+    updateHistoryEntry: mongoController.updateHistoryEntry,
+    // Un mensaje bloqueado deja la conversación a medias: se abre el caso para que la tome
+    // un asesor, que es donde debía terminar de todas formas.
+    alBloquear: async ({ to }) => {
+        const jid = String(to);
+        await registrarCaso({
+            userId: jid.split('@')[0],
+            rawUserId: jid,
+            tipo: 'suplementos',
+            motivo: 'suplementos'
+        });
+    }
 });
 
 // --- Notificador de Agentes de Ventas ---
@@ -253,7 +264,7 @@ setNotifier(handleAgentNotification);
 
 // Servicio de pagos por validar. Se arma acá porque necesita el cliente de WhatsApp
 // ya inicializado (para el acuse) y el notificador de agentes.
-const registrarPagoPendiente = crearServicioPagos({
+const registrarCaso = crearServicioPagos({
     PaymentReview,
     pauseBotForUser: mongoController.pauseBotForUser,
     enviarMensajeWhatsapp,
@@ -262,7 +273,7 @@ const registrarPagoPendiente = crearServicioPagos({
 
 // Lo dejamos disponible para services/ai/respond.js, que dispara la tool
 // `pago_pendiente` cuando el cliente avisa por texto que va a pagar o pide los datos.
-setPagoRegistrar(registrarPagoPendiente);
+setPagoRegistrar(registrarCaso);
 
 // --- Manejador de Mensajes ---
 const processingUsers = new Set();
@@ -383,7 +394,7 @@ client.on('message', async msg => {
                     status: 'paused_for_payment',
                     gcs_objectKey: dataUrl
                 });
-                const pagoResult = await registrarPagoPendiente({
+                const pagoResult = await registrarCaso({
                     userId,
                     rawUserId,
                     userName,

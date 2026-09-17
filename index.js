@@ -14,7 +14,7 @@ const resolveLidToPhone = require("./helper/resolveLid.js");
 const retryAsync = require("./helper/retryAsync.js");
 const downloadMediaCompat = require("./helper/downloadMediaCompat.js");
 const { uploadImage } = require("./services/gcs.service.js"); 
-const { createNotifier, destinatariosVentas } = require('./controller/notify.service');
+const { createNotifier, destinatariosVentas, destinatarioAlertaApagado } = require('./controller/notify.service');
 const { setNotifier } = require('./controller/notifier.registry.js');
 const { setPagoRegistrar } = require('./controller/pago.registry.js');
 const { processActiveCampaigns } = require('./services/marketing.service.js');
@@ -536,6 +536,18 @@ app.post('/agentes/aviso', requireApiKey, async (req, res) => {
     if (destinatarios.length === 0) return res.status(503).json({ success: false, error: 'sin_destinatarios' });
     const results = await Promise.all(destinatarios.map(id => enviarMensajeWhatsapp(id, String(mensaje))));
     res.json({ success: results.every(r => r === true), destinatarios });
+});
+
+// Aviso de que apagaron el interruptor general desde el dashboard. Va a un solo
+// número (ALERTA_BOT_APAGADO_PHONE), distinto al de los agentes de ventas: el texto
+// lo arma el dashboard, que es quien sabe qué usuario tocó el botón y a qué hora.
+app.post('/bot/aviso-apagado', requireApiKey, async (req, res) => {
+    const { mensaje } = req.body;
+    if (!mensaje) return res.status(400).json({ success: false, error: "Falta 'mensaje'" });
+    const destinatario = destinatarioAlertaApagado();
+    if (!destinatario) return res.status(503).json({ success: false, error: 'sin_destinatario' });
+    const enviado = await enviarMensajeWhatsapp(destinatario, String(mensaje));
+    res.json({ success: enviado === true, destinatario });
 });
 
 // Endpoint para Pausar manualmente

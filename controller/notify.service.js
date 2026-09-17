@@ -44,6 +44,21 @@ function destinatariosVentas() {
   return jids;
 }
 
+// JID de quien vigila el interruptor general del bot (ALERTA_BOT_APAGADO_PHONE).
+// Va aparte de los agentes de ventas: el aviso de "apagaron el bot" es para el dueño
+// de la operación, no para quien atiende las reservas. Devuelve null si la variable
+// no está configurada o el número es inválido; quien llame decide si eso es un error.
+function destinatarioAlertaApagado() {
+  const valor = limpiar(process.env.ALERTA_BOT_APAGADO_PHONE);
+  if (!valor) return null;
+  try {
+    return normalizeWhatsAppJid(valor);
+  } catch (err) {
+    console.warn(`[ALERTA_APAGADO] Número inválido en ALERTA_BOT_APAGADO_PHONE ("${valor}"):`, err.message);
+    return null;
+  }
+}
+
 function construirMensaje(datos) {
   const agente = limpiar(process.env.AGENTE_VENTAS_NAME) || 'Equipo de ventas';
   const nombre = [datos.nombre_cliente, datos.apellido_cliente].filter(Boolean).join(' ').trim();
@@ -159,4 +174,4 @@ function createNotifier({ client, mongoose, pauseBotForUser, MessageMedia, envia
   };
 }
 
-module.exports = { createNotifier, destinatariosVentas };
+module.exports = { createNotifier, destinatariosVentas, destinatarioAlertaApagado };

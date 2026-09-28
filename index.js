@@ -26,6 +26,9 @@ const { crearServicioPagos } = require('./services/payment.service.js');
 const { crearEntregaDeRespuesta } = require('./services/replyDelivery.js');
 const { crearRegistroDeEnviosPropios, crearCapturaDeAsesor } = require('./services/agentCapture.js');
 const { esComprobante } = require('./services/payment.detector.js');
+const { botInstanceId, esReservas, aInternacional } = require('./services/instancia.js');
+const { textoDelAviso } = require('./services/avisosReserva.js');
+const { createConversation, appendItem } = require('./services/ai/conversations.js');
 
 // whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
 // llama `await this.inject()` sin try/catch en cada navegación de la página.
@@ -145,7 +148,10 @@ function wipeSessionAndExit(motivo) {
 // --- Inicialización ---
 (async () => {
     await mongoController.connectDB();
-    console.log("📡 Conectando a WhatsApp...");
+    // La instancia de reservas es nueva: si nadie creó su documento en bot_clients, el
+    // bot no respondería nunca. La general ya lo tiene y no se toca.
+    if (esReservas()) await mongoController.asegurarBotClientConfig();
+    console.log(`📡 Conectando a WhatsApp (instancia ${botInstanceId()})...`);
     client.initialize();
 })();
 
@@ -177,7 +183,13 @@ client.on('ready', () => {
     clearTimeout(watchdog);
     currentQR = null;
     console.log('✅ WhatsApp Conectado y Listo.');
-    // Aquí eliminamos initCronJobs()
+    // Las campañas viven en una colección compartida: si las dos instancias las
+    // procesaran, cada cliente recibiría cada mensaje dos veces. Solo las manda el
+    // número general.
+    if (esReservas()) {
+        console.log('📢 Marketing automático desactivado en la instancia de reservas.');
+        return;
+    }
     setInterval(async () => {
         try {
             await processActiveCampaigns(client);
@@ -549,6 +561,56 @@ app.post('/bot/aviso-apagado', requireApiKey, async (req, res) => {
     const enviado = await enviarMensajeWhatsapp(destinatario, String(mensaje));
     res.json({ success: enviado === true, destinatario });
 });
+
+// Aviso al cliente cuando el equipo confirma, rechaza o cancela una reserva desde el
+// dashboard. Solo existe en el número de reservas, que es por donde el cliente pidió.
+// El texto es fijo (services/avisosReserva.js). Además de mandarlo, queda en el
+// historial y en la conversación de OpenAI, para que el modelo sepa qué se le avisó si
+// la persona responde. No pausa ni despausa nada.
+if (esReservas()) {
+    app.post('/reservas/aviso', requireApiKey, async (req, res) => {
+        const aviso = textoDelAviso(req.body || {});
+        if (!aviso.ok) return res.status(400).json({ success: false, error: aviso.error });
+
+        let jid;
+        try {
+            jid = normalizeWhatsAppJid(aInternacional(req.body.telefono));
+        } catch (error) {
+            return res.status(400).json({ success: false, error: 'telefono_invalido' });
+        }
+
+        const enviado = await enviarMensajeWhatsapp(jid, aviso.texto);
+        if (enviado !== true) return res.status(502).json({ success: false, error: 'envio_fallido' });
+
+        const ahora = new Date();
+        await mongoController.logHistory({
+            user: jid.split('@')[0],
+            phone: jid,
+            response: aviso.texto,
+            responseBy: 'bot',
+            type: 'chat',
+            status: 'responded',
+            read: true,
+            date: ahora,
+            dateFormat: ahora.toLocaleDateString('es-VE')
+        });
+
+        try {
+            const subscription = await mongoController.findSubscription(jid);
+            let conversationId = mongoController.conversacionDeInstancia(subscription);
+            if (!conversationId) {
+                conversationId = await createConversation({ channel: 'whatsapp', user_id: jid, user_name: subscription?.name });
+                await mongoController.guardarConversacion(jid, subscription?.name, conversationId);
+            }
+            await appendItem(conversationId, 'assistant', { messageType: 'text', message: aviso.texto });
+        } catch (error) {
+            // El cliente ya recibió el aviso: esto no puede convertirlo en un fallo.
+            console.error('❌ No se pudo agregar el aviso a la conversación de OpenAI:', error?.message || error);
+        }
+
+        res.json({ success: true });
+    });
+}
 
 // Endpoint para Pausar manualmente
 app.post('/campaign/pause', requireApiKey, async (req, res) => {

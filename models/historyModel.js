@@ -1,12 +1,20 @@
 // bot-assitant/models/historyModel.js
 
 const mongoose = require('mongoose');
+const { botInstanceId } = require('../services/instancia');
 
 const historySchema = new mongoose.Schema({
     user: {
         type: String,
         required: true,
         index: true
+    },
+    // Número de WhatsApp por el que entró el turno (nexus_general / nexus_reservas). El
+    // dashboard arma una bandeja por instancia con esto. Va por default para que ningún
+    // sitio que guarda historial pueda olvidarlo.
+    botInstanceId: {
+        type: String,
+        default: () => botInstanceId()
     },
     // 👇 NUEVO CAMPO: Para guardar el teléfono real
     phone: {

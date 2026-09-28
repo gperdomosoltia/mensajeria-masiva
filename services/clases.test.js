@@ -1,0 +1,151 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const { crearToolsDeClases, resolverClase, normalizarHora } = require('./clases');
+
+const SESIONES = [
+  { sessionId: 'a'.repeat(24), clase: 'Pilates', modalidad: null, fecha: '2026-09-29', hora: '18:30', cuposDisponibles: 3 },
+  { sessionId: 'b'.repeat(24), clase: 'Bike', modalidad: 'Training Bike', fecha: '2026-09-29', hora: '18:30', cuposDisponibles: 5 },
+  { sessionId: 'c'.repeat(24), clase: 'Bike', modalidad: 'Cycling', fecha: '2026-09-29', hora: '10:00', cuposDisponibles: 5 },
+  { sessionId: 'd'.repeat(24), clase: 'Crossfun', modalidad: null, fecha: '2026-09-29', hora: '07:00', requiereReserva: false }
+];
+
+function clienteFalso({ sesiones = SESIONES, semanaPublicada = true, reservar = { resultado: 'pendiente', reservationId: 'r1' }, ok = true } = {}) {
+  const llamadas = [];
+  return {
+    llamadas,
+    async sesiones(fecha) { llamadas.push(['sesiones', fecha]); return { ok, data: { fecha, semanaPublicada, sesiones } }; },
+    async reservar(body) { llamadas.push(['reservar', body]); return { ok, data: reservar }; },
+    async reservas(telefono) { llamadas.push(['reservas', telefono]); return { ok, data: { reservas: [] } }; },
+    async solicitarCancelacion(id, telefono) { llamadas.push(['cancelar', id, telefono]); return { ok, data: { resultado: 'cancelacion_solicitada', reservationId: id } }; }
+  };
+}
+
+function tools({ cliente = clienteFalso(), subscription = { cedula: 'V-12345678', titularReserva: {} } } = {}) {
+  const actualizaciones = [];
+  const t = crearToolsDeClases({
+    cliente,
+    findSubscription: async () => subscription,
+    updateSubscription: async (user, data) => { actualizaciones.push(data); }
+  });
+  return { ...t, cliente, actualizaciones };
+}
+
+const CHAT = { telefono: '584121234567', rawUserId: '584121234567@c.us', userName: 'Mari' };
+
+test('entiende cómo escribe la gente el nombre de una clase', () => {
+  assert.deepEqual(resolverClase('spinning'), { clase: 'Bike', modalidad: 'Cycling' });
+  assert.deepEqual(resolverClase('Training Bike'), { clase: 'Bike', modalidad: 'Training Bike' });
+  assert.deepEqual(resolverClase('bike', 'xtreme'), { clase: 'Bike', modalidad: 'Xtreme Bike' });
+  assert.deepEqual(resolverClase('CrossFit'), { clase: 'Crossfun', modalidad: null });
+  assert.deepEqual(resolverClase('Pilátes'), { clase: 'Pilates', modalidad: null });
+  assert.deepEqual(resolverClase('aerobics'), { texto: 'aerobics' });
+  assert.equal(resolverClase(''), null);
+});
+
+test('pasa las horas como las escribe la gente a HH:mm', () => {
+  assert.equal(normalizarHora('18:30'), '18:30');
+  assert.equal(normalizarHora('6:30 pm'), '18:30');
+  assert.equal(normalizarHora('6:30 p. m.'), '18:30');
+  assert.equal(normalizarHora('6pm'), '18:00');
+  assert.equal(normalizarHora('7 am'), '07:00');
+  assert.equal(normalizarHora('12 am'), '00:00');
+  assert.equal(normalizarHora('10'), '10:00');
+  assert.equal(normalizarHora('18h30'), '18:30');
+  assert.equal(normalizarHora('en la tarde'), null);
+  assert.equal(normalizarHora(undefined), null);
+});
+
+test('consultar_horarios filtra en el bot: Training Bike no trae el Cycling', async () => {
+  const t = tools();
+  const r = await t.consultarHorarios({ fecha: '2026-09-29', clase: 'training bike' });
+  assert.deepEqual(r.sesiones.map(s => s.sessionId), ['b'.repeat(24)]);
+  assert.deepEqual(t.cliente.llamadas, [['sesiones', '2026-09-29']], 'al dashboard solo va la fecha');
+});
+
+test('consultar_horarios: sin sesión a esa hora devuelve las de la clase con una nota', async () => {
+  const r = await tools().consultarHorarios({ fecha: '2026-09-29', clase: 'pilates', hora: '9 am' });
+  assert.equal(r.sesiones.length, 1);
+  assert.match(r.nota, /09:00/);
+});
+
+test('consultar_horarios: clase que no hay ese día devuelve las que sí hay', async () => {
+  const r = await tools().consultarHorarios({ fecha: '2026-09-29', clase: 'yoga' });
+  assert.deepEqual(r.sesiones, []);
+  assert.deepEqual(r.clasesDelDia, ['Pilates', 'Bike (Training Bike)', 'Bike (Cycling)', 'Crossfun']);
+});
+
+test('consultar_horarios: semana sin publicar no devuelve sesiones', async () => {
+  const r = await tools({ cliente: clienteFalso({ semanaPublicada: false }) }).consultarHorarios({ fecha: '2026-10-05' });
+  assert.deepEqual(r, { fecha: '2026-10-05', semanaPublicada: false, sesiones: [] });
+});
+
+test('consultar_horarios rechaza una fecha que no es YYYY-MM-DD sin llamar al dashboard', async () => {
+  const t = tools();
+  const r = await t.consultarHorarios({ fecha: 'el jueves' });
+  assert.equal(r.status, 'error');
+  assert.equal(t.cliente.llamadas.length, 0);
+});
+
+test('reservar para la titular usa la cédula registrada y guarda su nombre', async () => {
+  const t = tools();
+  const r = await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'titular', nombre: 'María', apellido: 'Gómez' }, CHAT);
+  assert.equal(r.resultado, 'pendiente');
+  const [, body] = t.cliente.llamadas[0];
+  assert.equal(body.telefono, '584121234567');
+  assert.deepEqual(body.titular, { nombre: 'María', apellido: 'Gómez', cedula: 'V-12345678' });
+  assert.deepEqual(body.participante, { tipo: 'titular', nombre: 'María', apellido: 'Gómez', cedula: 'V-12345678' });
+  assert.equal(body.aceptaListaEspera, false);
+  assert.deepEqual(t.actualizaciones, [{ titularReserva: { nombre: 'María', apellido: 'Gómez' } }]);
+});
+
+test('reservar sin cédula de la titular no llama al dashboard', async () => {
+  const t = tools({ subscription: { cedula: null } });
+  const r = await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'titular', nombre: 'María', apellido: 'Gómez' }, CHAT);
+  assert.deepEqual(r, { resultado: 'falta_cedula', falta: 'titular' });
+  assert.equal(t.cliente.llamadas.length, 0);
+});
+
+test('reservar para un invitado toma los datos de la titular de su reserva anterior', async () => {
+  const t = tools({ subscription: { cedula: 'V-12345678', titularReserva: { nombre: 'María', apellido: 'Gómez' } } });
+  await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'invitado', nombre: 'Ana', apellido: 'Pérez', cedula: 'v 23.456.789', aceptaListaEspera: true }, CHAT);
+  const [, body] = t.cliente.llamadas[0];
+  assert.deepEqual(body.titular, { nombre: 'María', apellido: 'Gómez', cedula: 'V-12345678' });
+  assert.deepEqual(body.participante, { tipo: 'invitado', nombre: 'Ana', apellido: 'Pérez', cedula: 'V-23456789' });
+  assert.equal(body.aceptaListaEspera, true);
+  assert.equal(t.actualizaciones.length, 0, 'no reescribe la titular si no cambió');
+});
+
+test('reservar para un invitado sin datos de la titular los pide', async () => {
+  const t = tools({ subscription: { cedula: 'V-12345678' } });
+  const r = await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'invitado', nombre: 'Ana', apellido: 'Pérez', cedula: 'V-23456789' }, CHAT);
+  assert.equal(r.resultado, 'falta_datos_titular');
+  assert.equal(t.cliente.llamadas.length, 0);
+});
+
+test('reservar para un invitado sin cédula devuelve falta_cedula del participante', async () => {
+  const t = tools({ subscription: { cedula: 'V-12345678', titularReserva: { nombre: 'María', apellido: 'Gómez' } } });
+  const r = await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'invitado', nombre: 'Ana', apellido: 'Pérez' }, CHAT);
+  assert.deepEqual(r, { resultado: 'falta_cedula', falta: 'participante' });
+});
+
+test('un sessionId inventado no llega al dashboard', async () => {
+  const t = tools();
+  const r = await t.reservarCupo({ sessionId: 'pilates-jueves', participante: 'titular', nombre: 'María', apellido: 'Gómez' }, CHAT);
+  assert.deepEqual(r, { resultado: 'sesion_no_disponible' });
+  assert.equal(t.cliente.llamadas.length, 0);
+});
+
+test('si el dashboard falla, el modelo recibe resultado "error"', async () => {
+  const t = tools({ cliente: clienteFalso({ ok: false, reservar: null }) });
+  const r = await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'titular', nombre: 'María', apellido: 'Gómez' }, CHAT);
+  assert.deepEqual(r, { resultado: 'error' });
+});
+
+test('solicitar_cancelacion: un id mal formado es no_encontrada sin llamar al dashboard', async () => {
+  const t = tools();
+  assert.deepEqual(await t.solicitarCancelacion({ reservationId: '123' }, CHAT), { resultado: 'no_encontrada' });
+  assert.equal(t.cliente.llamadas.length, 0);
+  const r = await t.solicitarCancelacion({ reservationId: 'e'.repeat(24) }, CHAT);
+  assert.equal(r.resultado, 'cancelacion_solicitada');
+  assert.deepEqual(t.cliente.llamadas[0], ['cancelar', 'e'.repeat(24), '584121234567']);
+});

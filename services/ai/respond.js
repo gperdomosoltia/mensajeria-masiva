@@ -6,6 +6,21 @@ const { getPagoRegistrar } = require('../../controller/pago.registry');
 // Se requiere directo: guardarCedula solo necesita el modelo, no el cliente de WhatsApp,
 // así que no hace falta el registro que usan las otras dos tools.
 const mongoController = require('../../controller/mongo.controller');
+const {
+  esReservas, botInstanceId, INSTANCIA_GENERAL, INSTANCIA_RESERVAS,
+  numeroReservas, numeroInformacionGeneral, formatoLocal
+} = require('../instancia');
+const { crearClienteClases, crearToolsDeClases } = require('../clases');
+const { crearDerivaciones } = require('../derivaciones');
+const Derivacion = require('../../models/derivacionModel');
+const { buildToolSchemas } = require('./tools');
+
+const toolsDeClases = crearToolsDeClases({
+  cliente: crearClienteClases({ fetch }),
+  findSubscription: mongoController.findSubscription,
+  updateSubscription: mongoController.updateSubscription
+});
+const derivaciones = crearDerivaciones({ Derivacion });
 
 // ---------- helpers ----------
 function collectFunctionCalls(res) {
@@ -17,116 +32,30 @@ function ensureWhatsAppJid(raw) {
   if (!raw) return raw;
   return raw.endsWith('@c.us') ? raw : `${raw}@c.us`;
 }
-
-// ---------- tools (schemas + ejecutores) ----------
-function buildToolSchemas() {
-  return [
-    {
-      type: 'function',
-      name: 'notificar_humano',
-      description: [
-        'Avisa por WhatsApp al agente de ventas humano.',
-        'LLÁMALA DE INMEDIATO en cuanto el cliente exprese que quiere reservar, agendar,',
-        'apartar un cupo, inscribirse o separar un horario, aunque todavía falten datos:',
-        'en ese caso usa tipo_notificacion "RESERVA" y manda lo que tengas.',
-        'Úsala también si el cliente pide hablar con una persona, reclama o pregunta algo',
-        'que no puedes resolver. No anuncies que estás usando una herramienta: después de',
-        'llamarla, confirma con naturalidad al cliente que un asesor lo contactará.'
-      ].join(' '),
-      parameters: {
-        type: 'object',
-        properties: {
-          tipo_notificacion: {
-            type: 'string',
-            enum: ['RESERVA', 'INTERES', 'SOPORTE', 'RECLAMO', 'OTRO'],
-            description: 'RESERVA cuando el cliente quiere reservar o agendar.'
-          },
-          descripcion: {
-            type: 'string',
-            description: 'Resumen en una o dos frases de lo que pidió el cliente, en sus términos.'
-          },
-          nombre_cliente: { type: 'string' },
-          apellido_cliente: { type: 'string' },
-          telefono: { type: 'string', description: 'Solo si el cliente da un número distinto al del chat.' },
-          email: { type: 'string' },
-          servicio: { type: 'string', description: 'Clase, plan o servicio que quiere reservar.' },
-          fecha: { type: 'string', description: 'Fecha pedida, tal como la dijo el cliente (ej. "sábado 14" o "14/09").' },
-          hora: { type: 'string', description: 'Hora pedida (ej. "7:00 am").' },
-          cantidad_personas: { type: 'string', description: 'Cuántas personas asistirían.' },
-          source: { type: 'string' }
-        },
-        required: ['descripcion', 'tipo_notificacion'],
-        additionalProperties: true
-      }
-    },
-    {
-      type: 'function',
-      name: 'pago_pendiente',
-      description: [
-        'Registra que el cliente ya pagó o pidió los datos para pagar, y avisa al asesor.',
-        'LLÁMALA DE INMEDIATO cuando el cliente pida los datos para pagar,',
-        'diga que ya pagó o anuncie que va a mandar el comprobante. Usa motivo "comprobante"',
-        'si dice que ya pagó o que manda el comprobante, y "datos_pago" si está pidiendo los datos.',
-        'No anuncies que estás usando una herramienta y no escribas nada después de llamarla:',
-        'el sistema ya le responde al cliente.'
-      ].join(' '),
-      parameters: {
-        type: 'object',
-        properties: {
-          motivo: { type: 'string', enum: ['comprobante', 'datos_pago'] },
-          descripcion: { type: 'string', description: 'Una frase con lo que dijo el cliente.' }
-        },
-        required: ['motivo'],
-        additionalProperties: true
-      }
-    },
-    {
-      type: 'function',
-      name: 'consulta_suplementos',
-      description: [
-        'Deriva a un asesor cualquier conversación sobre suplementos: precios, marcas,',
-        'presentaciones, disponibilidad, recomendaciones o simple interés en comprarlos.',
-        'LLÁMALA DE INMEDIATO en cuanto el tema aparezca, aunque el cliente no pregunte el',
-        'precio: basta con que quiera saber de suplementos. NUNCA des un precio, un monto,',
-        'una forma de pago ni ninguna tasa de cambio para suplementos.',
-        'No anuncies que estás usando una herramienta y no escribas nada después de llamarla:',
-        'el sistema ya le responde al cliente.'
-      ].join(' '),
-      parameters: {
-        type: 'object',
-        properties: {
-          descripcion: { type: 'string', description: 'Una frase con lo que preguntó el cliente.' }
-        },
-        required: [],
-        additionalProperties: true
-      }
-    },
-    {
-      type: 'function',
-      name: 'registrar_cedula',
-      description: [
-        'Guarda la cédula o el RIF del cliente, que es como se le identifica para los pagos.',
-        'LLÁMALA EN CUANTO el cliente te dé el número, dentro del flujo de reserva,',
-        'inscripción o pago. Manda el valor tal como lo dijo, con su letra si la dio.',
-        'El sistema te responde si quedó guardada: si dice que falta el tipo, pregúntale si',
-        'es V o E y vuelve a llamarla con la letra; si dice que el formato no sirve, pídele',
-        'que lo repita. Nunca le pidas una foto del documento, solo el número.',
-        'No anuncies que estás usando una herramienta.'
-      ].join(' '),
-      parameters: {
-        type: 'object',
-        properties: {
-          cedula: {
-            type: 'string',
-            description: 'Cédula o RIF tal como lo dio el cliente, ej. "V-12345678", "12345678" o "J-12345678-9".'
-          }
-        },
-        required: ['cedula'],
-        additionalProperties: true
-      }
-    }
-  ];
+/** "584121234567@c.us" → "584121234567": así lo guardan el dashboard y las derivaciones. */
+function telefonoDelChat(rawUserId) {
+  return String(rawUserId || '').split('@')[0];
 }
+function parseArgs(argsJSON) {
+  try { return argsJSON ? JSON.parse(argsJSON) : {}; } catch { return {}; }
+}
+
+const DIAS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/**
+ * El modelo no sabe qué día es. Sin esto, "mañana" o "el jueves" no se pueden pasar a
+ * una fecha, y la tool de horarios necesita la fecha exacta.
+ */
+function lineaFechaActual(ahora = new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23', weekday: 'short'
+  }).formatToParts(ahora).map(x => [x.type, x.value]));
+  const dia = DIAS[['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(p.weekday)];
+  return `[Sistema] Fecha y hora actual en Caracas: ${dia} ${p.day}/${p.month}/${p.year}, ${p.hour}:${p.minute} (hoy es ${p.year}-${p.month}-${p.day}).`;
+}
+
+// ---------- tools (ejecutores; los schemas están en ./tools.js) ----------
 
 const MENSAJES_CEDULA = {
   falta_tipo: 'Falta saber si es V (venezolano) o E (extranjero). Pregúntaselo con naturalidad y vuelve a llamarme con la letra.',
@@ -199,6 +128,10 @@ async function exec_notificar_humano({ channel, rawUserId, argsJSON }) {
       hora: a.hora || '',
       cantidad_personas: a.cantidad_personas || '',
       source: channel || 'whatsapp',
+      // En reservas avisar al equipo no silencia el bot: la persona puede seguir
+      // pidiendo o consultando cupos mientras un asesor revisa.
+      skip_pause: esReservas(),
+      botInstanceId: botInstanceId(),
       // El teléfono del chat manda: es el número real por el que escribe el cliente.
       telefono: (channel === 'whatsapp' && rawUserId) ? ensureWhatsAppJid(rawUserId) : (a.telefono || undefined)
     };
@@ -268,6 +201,69 @@ async function exec_pago_pendiente({ rawUserId, argsJSON, userName }) {
   }
 }
 
+async function exec_derivar_a_reservas({ rawUserId, argsJSON }) {
+  const a = parseArgs(argsJSON);
+  const numero = numeroReservas();
+  const subscription = await mongoController.findSubscription(ensureWhatsAppJid(rawUserId));
+  try {
+    await derivaciones.crear({
+      telefono: telefonoDelChat(rawUserId),
+      origen: INSTANCIA_GENERAL,
+      destino: INSTANCIA_RESERVAS,
+      contexto: {
+        motivo: a.motivo || null,
+        solicitudes: Array.isArray(a.solicitudes) ? a.solicitudes : [],
+        cantidad_invitados: a.cantidad_invitados ?? null,
+        resumen: a.resumen || ''
+      },
+      nombreCliente: a.nombre_cliente || null,
+      cedulaRegistrada: Boolean(subscription?.cedula)
+    });
+  } catch (e) {
+    // Sin contexto el bot de reservas atiende desde cero; el número se da igual.
+    console.error('❌ No se pudo guardar la derivación a reservas:', e?.message || e);
+  }
+  return JSON.stringify({
+    status: 'success',
+    numero_reservas: formatoLocal(numero),
+    enlace: `https://wa.me/${numero}`
+  });
+}
+
+async function exec_derivar_a_informacion_general({ rawUserId, argsJSON }) {
+  const a = parseArgs(argsJSON);
+  const numero = numeroInformacionGeneral();
+  try {
+    await derivaciones.crear({
+      telefono: telefonoDelChat(rawUserId),
+      origen: INSTANCIA_RESERVAS,
+      destino: INSTANCIA_GENERAL,
+      contexto: { tema: a.tema || '', resumen: a.resumen || '' }
+    });
+  } catch (e) {
+    console.error('❌ No se pudo guardar la derivación a información general:', e?.message || e);
+  }
+  return JSON.stringify({
+    status: 'success',
+    numero_informacion_general: formatoLocal(numero),
+    enlace: `https://wa.me/${numero}`
+  });
+}
+
+// Tools del bot de reservas que llaman al dashboard (services/clases.js).
+const TOOLS_DE_CLASES = new Set(['consultar_horarios', 'reservar_cupo_clase', 'consultar_mis_reservas', 'solicitar_cancelacion']);
+
+async function exec_tool_de_clases(name, { rawUserId, argsJSON, userName }) {
+  const a = parseArgs(argsJSON);
+  const chat = { telefono: telefonoDelChat(rawUserId), rawUserId: ensureWhatsAppJid(rawUserId), userName };
+  let resultado;
+  if (name === 'consultar_horarios') resultado = await toolsDeClases.consultarHorarios(a);
+  else if (name === 'reservar_cupo_clase') resultado = await toolsDeClases.reservarCupo(a, chat);
+  else if (name === 'consultar_mis_reservas') resultado = await toolsDeClases.misReservas(chat);
+  else resultado = await toolsDeClases.solicitarCancelacion(a, chat);
+  return JSON.stringify(resultado);
+}
+
 function normalizeImageSource(content, mimetype) {
   if (!content) return null;
   if (typeof content === 'string' && content.startsWith('data:')) return content;
@@ -278,7 +274,7 @@ function normalizeImageSource(content, mimetype) {
   return null;
 }
 
-function mapBatchToTurn(queuedParts = []) {
+function mapBatchToTurn(queuedParts = [], { contextoDerivacion = null, ahora = new Date() } = {}) {
   const blocks = [];
   for (const p of queuedParts) {
     if (!p) continue;
@@ -294,7 +290,12 @@ function mapBatchToTurn(queuedParts = []) {
       if (src) blocks.push({ type: 'input_image', image_url: src });
     }
   }
-  return blocks.length ? [{ role: 'user', content: blocks }] : [];
+  if (!blocks.length) return [];
+  // El contexto del sistema va primero y en bloques propios, para que el modelo no lo
+  // confunda con algo que escribió el cliente.
+  const sistema = [{ type: 'input_text', text: lineaFechaActual(ahora) }];
+  if (contextoDerivacion) sistema.push({ type: 'input_text', text: contextoDerivacion });
+  return [{ role: 'user', content: [...sistema, ...blocks] }];
 }
 
 async function respondWithConversation({
@@ -304,12 +305,14 @@ async function respondWithConversation({
   user_name,
   conversation_id,
   messages,
+  contextoDerivacion = null,
   promptId = process.env.PROMPT_ID
 }) {
   if (!conversation_id) throw new Error('conversation_id requerido');
-  const tools = buildToolSchemas(); // 'notificar_humano' y 'pago_pendiente'
+  const tools = buildToolSchemas();
+  const permitidas = new Set(tools.map(t => t.name));
 
-  const input = mapBatchToTurn(messages);
+  const input = mapBatchToTurn(messages, { contextoDerivacion });
   if (!input.length) throw new Error('EMPTY_INPUT');
 
   let hops = 0;
@@ -344,8 +347,9 @@ async function respondWithConversation({
       let out = '';
       let suprimir = false;
       try {
-        // --- CORRECCIÓN 4: Se elimina la lógica para llamar a exec_get_tasa_bcv ---
-        if (name === 'notificar_humano') out = await exec_notificar_humano({ channel, rawUserId, argsJSON });
+        // Una tool de la otra instancia no se ejecuta aunque el modelo la invente.
+        if (!permitidas.has(name)) out = JSON.stringify({ error: `Tool ${name} no disponible` });
+        else if (name === 'notificar_humano') out = await exec_notificar_humano({ channel, rawUserId, argsJSON });
         else if (name === 'pago_pendiente') {
           const r = await exec_pago_pendiente({ rawUserId, argsJSON, userName: user_name });
           out = r.out;
@@ -357,6 +361,9 @@ async function respondWithConversation({
           suprimir = r.suppress;
         }
         else if (name === 'registrar_cedula') out = await exec_registrar_cedula({ rawUserId, argsJSON });
+        else if (name === 'derivar_a_reservas') out = await exec_derivar_a_reservas({ rawUserId, argsJSON });
+        else if (name === 'derivar_a_informacion_general') out = await exec_derivar_a_informacion_general({ rawUserId, argsJSON });
+        else if (TOOLS_DE_CLASES.has(name)) out = await exec_tool_de_clases(name, { rawUserId, argsJSON, userName: user_name });
         else out = JSON.stringify({ error: `Tool ${name} no implementada` });
       } catch (e) {
         out = JSON.stringify({ error: String(e?.message || e) });
@@ -373,4 +380,4 @@ async function respondWithConversation({
   }
 }
 
-module.exports = { respondWithConversation };
+module.exports = { respondWithConversation, mapBatchToTurn, lineaFechaActual };

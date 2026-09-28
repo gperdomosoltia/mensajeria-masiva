@@ -1,8 +1,9 @@
 // Aviso por WhatsApp a los agentes de ventas.
 //
 // Se dispara por dos vías, ambas con el mismo formato de payload:
-//   - la tool `notificar_humano` que la IA llama cuando el cliente quiere reservar
-//     (services/ai/respond.js, llamada directa en proceso);
+//   - la tool `notificar_humano` que la IA llama cuando el cliente pide hablar con
+//     alguien, reclama o se inscribe (services/ai/respond.js, llamada directa en
+//     proceso). Las reservas de clases ya no pasan por acá: van al bot de reservas;
 //   - POST /notificar_agente, para integraciones externas (dashboard, etc.).
 //
 // Los mensajes salen por el mismo número de WhatsApp del bot y van a
@@ -128,6 +129,7 @@ function createNotifier({ client, mongoose, pauseBotForUser, MessageMedia, envia
         user: datos.telefono || null,
         tipo_notificacion: tipo,
         source,
+        botInstanceId: limpiar(payload.botInstanceId) || null,
         date: now,
         dateFormat: now.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }),
         notification: finalMsg,

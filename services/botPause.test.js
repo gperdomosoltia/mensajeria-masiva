@@ -149,3 +149,22 @@ test('estadoPausa deja pasar al bot cuando no hay nada que lo detenga', async ()
   assert.equal(estado.pausado, false);
   assert.equal(estado.motivo, null);
 });
+
+test('con instancia, la pausa se busca y se guarda solo para ese número', async () => {
+  const filtros = [];
+  const BotPause = {
+    async findOne(filter) { filtros.push(filter); return null; },
+    async findOneAndUpdate(filter, update) { filtros.push(filter); return { ...update.$set }; },
+    async deleteOne(filter) { filtros.push(filter); return { deletedCount: 1 }; }
+  };
+  const reservas = crearControlDePausa({ BotPause, botInstanceId: 'nexus_reservas' });
+  const pausa = await reservas.pauseBotForUser('584121110000', 2, 'manual');
+  assert.equal(pausa.botInstanceId, 'nexus_reservas');
+  await reservas.resumeBotForUser('584121110000', { force: true });
+  for (const f of filtros) assert.deepEqual(f, { user: '584121110000', botInstanceId: 'nexus_reservas' });
+
+  filtros.length = 0;
+  const general = crearControlDePausa({ BotPause, botInstanceId: 'nexus_general' });
+  await general.getBotPause('584121110000');
+  assert.deepEqual(filtros[0], { user: '584121110000', botInstanceId: { $in: ['nexus_general', null] } });
+});

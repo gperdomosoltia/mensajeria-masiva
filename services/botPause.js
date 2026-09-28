@@ -12,10 +12,21 @@
 //   - manual: la pone una persona, normalmente sin `until` (indefinida), y manda
 //     sobre las automáticas: ninguna la pisa ni la acorta, y solo se levanta con
 //     el botón Reanudar del dashboard (`force: true`).
+//
+// Con `botInstanceId`, cada número de WhatsApp pausa por su lado (ver
+// services/instancia.js). Sin él se comporta como antes de la separación: una pausa
+// por usuario.
+
+const { filtroInstancia } = require('./instancia');
 
 const DEFAULT_PAUSE_HOURS = 2;
 
-function crearControlDePausa({ BotPause }) {
+function crearControlDePausa({ BotPause, botInstanceId } = {}) {
+    const filtro = (userId) => (botInstanceId
+        ? { user: String(userId), ...filtroInstancia(botInstanceId) }
+        : { user: String(userId) });
+    const instancia = botInstanceId ? { botInstanceId } : {};
+
     /**
      * Devuelve la pausa vigente o null.
      *
@@ -27,7 +38,7 @@ function crearControlDePausa({ BotPause }) {
     async function getBotPause(userId) {
         if (!userId) return null;
         try {
-            const pausa = await BotPause.findOne({ user: String(userId) });
+            const pausa = await BotPause.findOne(filtro(userId));
             if (!pausa) return null;
             if (pausa.until && new Date(pausa.until).getTime() <= Date.now()) return null;
             return pausa;
@@ -68,8 +79,8 @@ function crearControlDePausa({ BotPause }) {
             }
 
             return await BotPause.findOneAndUpdate(
-                { user: String(userId) },
-                { $set: { user: String(userId), until, reason: reason || 'notificacion_agente', manual, pausedBy: by } },
+                filtro(userId),
+                { $set: { user: String(userId), ...instancia, until, reason: reason || 'notificacion_agente', manual, pausedBy: by } },
                 { upsert: true, new: true }
             );
         } catch (error) {
@@ -98,7 +109,7 @@ function crearControlDePausa({ BotPause }) {
                     return { resumed: false, reason: 'pausa_manual' };
                 }
             }
-            await BotPause.deleteOne({ user: String(userId) });
+            await BotPause.deleteOne(filtro(userId));
             return { resumed: true };
         } catch (error) {
             console.error('❌ Error reanudando el bot:', error.message);

@@ -11,9 +11,24 @@ const subscriptionSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    // Conversación de OpenAI del número general. Se queda con este nombre porque es el
+    // que ya tienen todas las suscripciones anteriores a la separación por instancia.
     conversationId: {
         type: String,
         required: false
+    },
+    // Conversaciones de OpenAI de las demás instancias, por botInstanceId
+    // ({ nexus_reservas: "conv_…" }). Cada número tiene su propio hilo con el modelo;
+    // la cédula y el resto de la suscripción sí se comparten.
+    conversaciones: {
+        type: mongoose.Schema.Types.Mixed,
+        default: undefined
+    },
+    // Nombre y apellido con los que la persona pidió su primera reserva. Hace falta al
+    // reservar para un invitado: la reserva siempre lleva los datos de quien escribe.
+    titularReserva: {
+        nombre: { type: String, default: null },
+        apellido: { type: String, default: null }
     },
     // Cédula o RIF normalizado (ej. "V-12345678", "J-12345678-9"). Es el identificador
     // con el que se van a cruzar los pagos, así que se guarda en una forma sola.

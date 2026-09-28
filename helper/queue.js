@@ -4,6 +4,11 @@ const mongoController = require('../controller/mongo.controller.js');
 // Importamos directamente los servicios de IA que antes estaban en el microservicio.
 const { createConversation } = require('../services/ai/conversations');
 const { respondWithConversation } = require('../services/ai/respond');
+const { botInstanceId } = require('../services/instancia');
+const { crearDerivaciones, formatearContexto } = require('../services/derivaciones');
+const Derivacion = require('../models/derivacionModel');
+
+const derivaciones = crearDerivaciones({ Derivacion });
 
 const userMessageQueues = new Map();
 // Ventana de agrupación: los mensajes que el cliente mande dentro de estos 20 s se
@@ -41,31 +46,43 @@ async function processUserQueueInternal(userId, userName, onQueueProcessedCallba
             await chat.sendStateTyping();
         }
 
-        // 1) Buscar suscripción y conversationId
-        let subscription = await mongoController.findSubscription(rawUserId);
-        let conversationId = subscription?.conversationId ?? null;
+        // 1) Buscar suscripción y la conversación de OpenAI de ESTE número: cada
+        //    instancia tiene su propio hilo con el modelo (services/instancia.js).
+        const subscription = await mongoController.findSubscription(rawUserId);
+        let conversationId = mongoController.conversacionDeInstancia(subscription);
 
-        // 2) Si NO hay conversationId, crearla directamente
+        // 2) Si NO hay conversación para este número, crearla directamente
         if (!conversationId) {
-          console.log(`🔄 No se encontró conversationId para ${rawUserId}. Creando una nueva...`);
+          console.log(`🔄 No se encontró conversación de ${botInstanceId()} para ${rawUserId}. Creando una nueva...`);
           conversationId = await createConversation({ channel: 'whatsapp', user_id: rawUserId, user_name: userName });
-          
-          if (subscription) {
-            await mongoController.updateSubscription(rawUserId, { conversationId });
-          } else {
-            await mongoController.createSubscription(rawUserId, userName, conversationId);
-          }
+          await mongoController.guardarConversacion(rawUserId, userName, conversationId);
         }
 
-        // 3) Obtener la respuesta de la IA llamando a la función directamente
+        // 3) ¿Viene derivado del otro número? Lo que contó allá se le pasa al modelo en
+        //    este turno. Se marca entregado solo si el modelo respondió; si la llamada
+        //    falla, el contexto queda para el próximo mensaje.
+        let derivacion = null;
+        try {
+            derivacion = await derivaciones.buscarPendiente({ telefono: rawUserId.split('@')[0], destino: botInstanceId() });
+        } catch (error) {
+            console.error('❌ No se pudo buscar la derivación:', error.message);
+        }
+
+        // 4) Obtener la respuesta de la IA llamando a la función directamente
         const result = await respondWithConversation({
             channel: 'whatsapp',
             user_id: rawUserId,
             rawUserId: rawUserId,
             user_name: userName,
             conversation_id: conversationId,
-            messages: queuedParts
+            messages: queuedParts,
+            contextoDerivacion: derivacion ? formatearContexto(derivacion) : null
         });
+
+        if (derivacion && result?.ok) {
+            await derivaciones.marcarEntregada(derivacion._id).catch((error) =>
+                console.error('❌ No se pudo marcar la derivación como entregada:', error.message));
+        }
 
         console.log(`✅ Respuesta obtenida para ${userId}:`, {
             ok: result?.ok, response_id: result?.responseId, conversation_id: result?.conversationId

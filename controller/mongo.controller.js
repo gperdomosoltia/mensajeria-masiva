@@ -5,6 +5,7 @@ const BotClient = require('../models/botClientModel'); // MANTENIDO
 const BotPause = require('../models/botPauseModel');
 const { crearControlDePausa } = require('../services/botPause');
 const { crearRegistroDeCedula } = require('../services/identity');
+const { botInstanceId, INSTANCIA_GENERAL } = require('../services/instancia');
 require('dotenv').config();
 
 const MONGO_URI = process.env.MONGO_URI;
@@ -16,7 +17,8 @@ async function connectDB() {
     }
     try {
         await mongoose.connect(MONGO_URI, { family: 4 });
-        console.log('✅ Conectado a MongoDB');
+        console.log(`✅ Conectado a MongoDB (instancia ${botInstanceId()})`);
+        await BotPause.migrarIndicesDePausa();
     } catch (error) {
         console.error('❌ Error MongoDB:', error);
         process.exit(1);
@@ -38,6 +40,30 @@ async function getBotClientConfig(masterIdentifier = process.env.DEFAULT_BOT_CLI
     }
 }
 
+/**
+ * Sin documento en `bot_clients` el bot no responde (index.js lo trata como un fallo de
+ * setup). La instancia de reservas es nueva y nadie lo creó a mano: se crea encendido
+ * la primera vez. Es el mismo documento que el dashboard lee para el interruptor de la
+ * bandeja de reservas (BOT_RESERVAS_MASTER_ID, por defecto "nexus_reservas").
+ */
+async function asegurarBotClientConfig(masterIdentifier = process.env.DEFAULT_BOT_CLIENT_MASTER_ID) {
+    if (!masterIdentifier) return null;
+    const id = String(masterIdentifier).trim();
+    try {
+        const existente = await BotClient.findOne({ bot_client_master: id });
+        if (existente) return existente;
+        console.log(`🆕 No existía la configuración "${id}" en bot_clients; se crea con el bot encendido.`);
+        return await BotClient.findOneAndUpdate(
+            { bot_client_master: id },
+            { $setOnInsert: { bot_client_master: id, bot_status: true } },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        console.error('❌ No se pudo asegurar la configuración del bot:', error.message);
+        return null;
+    }
+}
+
 function isBotActive(botConfig) {
     return botConfig && botConfig.bot_status === true;
 }
@@ -54,7 +80,7 @@ function isUserWhitelisted(userId, botConfig) {
 // La lógica vive en services/botPause.js para poder probarla sin Mongo; acá solo
 // se le inyecta el modelo real y se reexporta con los mismos nombres de siempre.
 
-const { pauseBotForUser, getBotPause, resumeBotForUser, estadoPausa } = crearControlDePausa({ BotPause });
+const { pauseBotForUser, getBotPause, resumeBotForUser, estadoPausa } = crearControlDePausa({ BotPause, botInstanceId: botInstanceId() });
 
 // --- Cédula / RIF del cliente ---
 // La normalización vive en services/identity.js para poder probarla sin Mongo.
@@ -75,6 +101,28 @@ async function createSubscription(userId, userName, conversationId) {
             { upsert: true, new: true }
         );
     } catch (error) { return null; }
+}
+
+/** Conversación de OpenAI de este número para ese usuario, o null. */
+function conversacionDeInstancia(subscription, id = botInstanceId()) {
+    if (!subscription) return null;
+    if (id === INSTANCIA_GENERAL) return subscription.conversationId ?? null;
+    return subscription.conversaciones?.[id] ?? null;
+}
+
+/** Guarda la conversación de este número, creando la suscripción si no existe. */
+async function guardarConversacion(userId, userName, conversationId, id = botInstanceId()) {
+    const campo = id === INSTANCIA_GENERAL ? 'conversationId' : `conversaciones.${id}`;
+    try {
+        return await Subscription.findOneAndUpdate(
+            { user: userId },
+            { $set: { [campo]: conversationId }, $setOnInsert: { user: userId, name: userName || "Sin nombre" } },
+            { upsert: true, new: true }
+        );
+    } catch (error) {
+        console.error('❌ Error guardando la conversación:', error.message);
+        return null;
+    }
 }
 
 async function updateSubscription(userId, dataToUpdate) {
@@ -162,6 +210,7 @@ module.exports = {
     connectDB,
     disconnectDB,
     getBotClientConfig,
+    asegurarBotClientConfig,
     isBotActive,
     isUserBlacklisted,
     isUserWhitelisted,
@@ -172,6 +221,8 @@ module.exports = {
     findSubscription,
     createSubscription,
     updateSubscription,
+    conversacionDeInstancia,
+    guardarConversacion,
     guardarCedula,
     logHistory,
     updateHistoryEntry,

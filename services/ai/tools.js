@@ -101,14 +101,14 @@ function toolsGenerales() {
           nombre_cliente: { type: 'string', description: 'Nombre y apellido, si ya los dio.' },
           solicitudes: {
             type: 'array',
-            description: 'Clases que mencionó, una por ítem.',
+            description: 'Clases que mencionó, una por ítem. Llena solo lo que el cliente dijo: omite el campo si no lo dijo, nunca lo completes ni pongas "no especificada".',
             items: {
               type: 'object',
               properties: {
-                clase: { type: 'string' },
-                modalidad: { type: 'string' },
+                clase: { type: 'string', description: 'Como la dijo el cliente, ej. "Pilates", "Cycling".' },
+                modalidad: { type: 'string', description: 'Solo para Bike y solo si la dijo: "Cycling", "Training Bike" o "Xtreme Bike".' },
                 fecha: { type: 'string', description: 'Como la dijo el cliente: "el jueves", "2/10".' },
-                hora: { type: 'string' }
+                hora: { type: 'string', description: 'Como la dijo el cliente: "en la tarde", "6:30".' }
               },
               additionalProperties: false
             }

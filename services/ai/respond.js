@@ -12,6 +12,7 @@ const {
 } = require('../instancia');
 const { crearClienteClases, crearToolsDeClases } = require('../clases');
 const { crearDerivaciones } = require('../derivaciones');
+const { normalizarCedula } = require('../identity');
 const Derivacion = require('../../models/derivacionModel');
 const { buildToolSchemas } = require('./tools');
 
@@ -94,9 +95,28 @@ async function exec_consulta_suplementos({ rawUserId, userName }) {
 }
 
 async function exec_registrar_cedula({ rawUserId, argsJSON }) {
-  let a = {};
-  try { a = argsJSON ? JSON.parse(argsJSON) : {}; } catch { a = {}; }
+  const a = parseArgs(argsJSON);
   const valor = a.cedula || a.documento || a.rif || a.numero || '';
+
+  // En reservas, la cédula guardada es la de la titular y va en cada reserva suya. En
+  // las pruebas el modelo llamó esta tool con la cédula de una invitada y pisó la de la
+  // titular: acá no se reemplaza una cédula distinta. Si de verdad estaba mal, la
+  // corrige un asesor desde el dashboard.
+  if (esReservas()) {
+    const nueva = normalizarCedula(valor);
+    const subscription = nueva.ok ? await mongoController.findSubscription(ensureWhatsAppJid(rawUserId)) : null;
+    if (nueva.ok && subscription?.cedula && subscription.cedula !== nueva.valor) {
+      return JSON.stringify({
+        status: 'error',
+        motivo: 'ya_registrada',
+        mensaje: [
+          'Quien escribe ya tiene otra cédula registrada, así que esta no se guardó.',
+          'Si es la de un invitado, va en reservar_cupo_clase (campo cedula), no aquí.',
+          'Si la persona dice que la suya estaba mal, avisa al equipo con notificar_humano para que la corrija.'
+        ].join(' ')
+      });
+    }
+  }
 
   const r = await mongoController.guardarCedula({ user: rawUserId, cedula: valor, origen: 'cliente' });
   if (r.ok) {
@@ -106,10 +126,16 @@ async function exec_registrar_cedula({ rawUserId, argsJSON }) {
       mensaje: 'Cédula guardada. Sigue con naturalidad; no repitas el número ni lo confirmes dos veces.'
     });
   }
+  // Con falta_tipo se devuelve el número que ya dio: si no, cuando la persona contesta
+  // solo "V", el modelo a veces le vuelve a pedir la cédula completa.
+  const numero = r.motivo === 'falta_tipo' ? String(valor).replace(/\D/g, '') : undefined;
   return JSON.stringify({
     status: 'error',
     motivo: r.motivo,
-    mensaje: MENSAJES_CEDULA[r.motivo] || 'No se pudo guardar.'
+    numero,
+    mensaje: r.motivo === 'falta_tipo'
+      ? `Falta saber si es V (venezolano) o E (extranjero). Pregúntaselo con naturalidad; cuando conteste, vuelve a llamarme con la letra y este mismo número (ej. "V-${numero}"), sin pedirle el número otra vez.`
+      : (MENSAJES_CEDULA[r.motivo] || 'No se pudo guardar.')
   });
 }
 

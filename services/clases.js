@@ -82,7 +82,9 @@ function coincideClase(sesion, objetivo) {
             || (modalidad && (modalidad.includes(objetivo.texto) || objetivo.texto.includes(modalidad)));
     }
     if (nombre !== normalizarTexto(objetivo.clase)) return false;
-    return !objetivo.modalidad || modalidad === normalizarTexto(objetivo.modalidad);
+    // La modalidad es opcional en el dashboard: una sesión de Bike sin modalidad vale
+    // para quien pide Cycling, Training Bike o Xtreme Bike.
+    return !objetivo.modalidad || !modalidad || modalidad === normalizarTexto(objetivo.modalidad);
 }
 
 /**
@@ -154,7 +156,47 @@ function crearClienteClases({ fetch, baseUrl = process.env.DASHBOARD_BASE_URL, s
 
 const ERROR_TECNICO = { resultado: 'error' };
 
-function crearToolsDeClases({ cliente, findSubscription, updateSubscription }) {
+function horasDeAnticipacion(minutos) {
+    const m = Number(minutos);
+    if (!Number.isFinite(m) || m <= 0) return null;
+    return m % 60 === 0 ? `${m / 60} h` : `${m} min`;
+}
+
+/**
+ * El dashboard no deja solicitar dentro de la anticipación mínima, pero en recepción sí
+ * pueden reservar a mano si queda cupo. Por eso, en vez de cerrar la puerta, el bot le
+ * pasa el caso al asesor con todos los datos y la conversación queda pausada para que
+ * la siga una persona. Sin cupo no hay nada que hacer y se responde como siempre.
+ */
+function debeDerivarseAlAsesor(resultado) {
+    if (resultado?.resultado !== 'fuera_de_ventana') return false;
+    const cupos = resultado.sesion?.cuposDisponibles;
+    return typeof cupos !== 'number' || cupos > 0;
+}
+
+function avisoReservaFueraDePlazo({ resultado, titular, participante, telefono, rawUserId }) {
+    const sesion = resultado.sesion || {};
+    const clase = sesion.modalidad ? `${sesion.clase} (${sesion.modalidad})` : (sesion.clase || '');
+    const quien = `${participante.nombre} ${participante.apellido}`.trim();
+    const para = participante.tipo === 'invitado'
+        ? `${quien} (cédula ${participante.cedula}), invitado de ${titular.nombre} ${titular.apellido}`.trim()
+        : `${quien} (cédula ${participante.cedula})`;
+    const plazo = horasDeAnticipacion(resultado.anticipacionMinutos);
+    const cupos = typeof sesion.cuposDisponibles === 'number' ? ` Quedan ${sesion.cuposDisponibles} cupos.` : '';
+    return {
+        tipo_notificacion: 'RESERVA',
+        descripcion: `Quiere un cupo para ${para}. La clase empieza en menos de ${plazo || 'el plazo mínimo'} de anticipación, así que el bot no puede solicitarla.${cupos} Si se puede, regístrala a mano en la agenda y escríbele por WhatsApp. La conversación quedó pausada.`,
+        nombre_cliente: titular.nombre,
+        apellido_cliente: titular.apellido,
+        servicio: clase,
+        fecha: sesion.fecha || '',
+        hora: sesion.hora || '',
+        telefono: rawUserId || telefono,
+        skip_pause: false
+    };
+}
+
+function crearToolsDeClases({ cliente, findSubscription, updateSubscription, notificarAsesor }) {
     async function consultarHorarios(args = {}) {
         const fecha = String(args.fecha || '').trim();
         if (!FECHA.test(fecha)) {
@@ -237,6 +279,14 @@ function crearToolsDeClases({ cliente, findSubscription, updateSubscription }) {
             aceptaListaEspera: args.aceptaListaEspera === true
         });
         if (!r.ok || !r.data?.resultado) return ERROR_TECNICO;
+        if (debeDerivarseAlAsesor(r.data) && typeof notificarAsesor === 'function') {
+            const aviso = await notificarAsesor(avisoReservaFueraDePlazo({ resultado: r.data, titular, participante, telefono, rawUserId }));
+            if (!aviso?.result) return ERROR_TECNICO;
+            return {
+                resultado: 'derivada_a_asesor',
+                mensaje: 'La clase está dentro del plazo mínimo, pero queda cupo: un asesor revisa si puede reservarla a mano y le escribe por este chat.'
+            };
+        }
         return r.data;
     }
 

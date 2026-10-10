@@ -19,7 +19,18 @@ const { buildToolSchemas } = require('./tools');
 const toolsDeClases = crearToolsDeClases({
   cliente: crearClienteClases({ fetch }),
   findSubscription: mongoController.findSubscription,
-  updateSubscription: mongoController.updateSubscription
+  updateSubscription: mongoController.updateSubscription,
+  // Reserva dentro de la anticipación mínima con cupo: la toma un asesor a mano.
+  notificarAsesor: async (payload) => {
+    const notifier = getNotifier();
+    if (!notifier) return { result: false };
+    try {
+      return await notifier({ ...payload, source: 'whatsapp', botInstanceId: botInstanceId() });
+    } catch (err) {
+      console.error('❌ [CLASES] No se pudo avisar al asesor de una reserva fuera de plazo:', err?.message || err);
+      return { result: false };
+    }
+  }
 });
 const derivaciones = crearDerivaciones({ Derivacion });
 

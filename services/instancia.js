@@ -58,6 +58,17 @@ function numeroInformacionGeneral() {
     return aInternacional(process.env.NUMERO_INFORMACION_GENERAL || NUMERO_INFORMACION_GENERAL_DEFAULT);
 }
 
+/**
+ * ¿El remitente es uno de los dos bots? Si un bot le escribe al otro (pasó cuando
+ * alguien usó el teléfono de un bot para escribirle al otro), cada respuesta dispara
+ * la siguiente y entran en un bucle sin fin. Un id @lid sin traducir no coincide.
+ */
+function esNumeroDeBot(userId) {
+    const numero = aInternacional(userId);
+    if (!numero) return false;
+    return numero === numeroReservas() || numero === numeroInformacionGeneral();
+}
+
 module.exports = {
     INSTANCIA_GENERAL,
     INSTANCIA_RESERVAS,
@@ -67,5 +78,6 @@ module.exports = {
     aInternacional,
     formatoLocal,
     numeroReservas,
-    numeroInformacionGeneral
+    numeroInformacionGeneral,
+    esNumeroDeBot
 };

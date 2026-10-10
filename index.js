@@ -26,7 +26,7 @@ const { crearServicioPagos } = require('./services/payment.service.js');
 const { crearEntregaDeRespuesta } = require('./services/replyDelivery.js');
 const { crearRegistroDeEnviosPropios, crearCapturaDeAsesor } = require('./services/agentCapture.js');
 const { esComprobante } = require('./services/payment.detector.js');
-const { botInstanceId, esReservas, aInternacional } = require('./services/instancia.js');
+const { botInstanceId, esReservas, aInternacional, esNumeroDeBot } = require('./services/instancia.js');
 const { textoDelAviso } = require('./services/avisosReserva.js');
 const { createConversation, appendItem } = require('./services/ai/conversations.js');
 
@@ -337,6 +337,22 @@ client.on('message', async msg => {
             console.warn(`⚠️  No se pudo obtener el contacto de ${userId}; se sigue sin nombre.`);
         }
         const userName = (contact && contact.pushname) || "Usuario";
+
+        // Un bot no le responde al otro: si alguien escribe desde el teléfono de un bot
+        // al otro, cada respuesta dispara la siguiente y entran en un bucle sin fin. Se
+        // guarda igual para que se vea en el dashboard.
+        if (esNumeroDeBot(userId)) {
+            console.log(`🤖 Mensaje de ${userId}, que es uno de los bots: no se responde.`);
+            await mongoController.saveSilentMessage({
+                user: userId,
+                phone: rawUserId,
+                name: userName,
+                message: msg.body || `[${msg.type}]`,
+                type: msg.type,
+                status: 'from_bot_number'
+            });
+            return;
+        }
 
         // Gate único de pausa: cubre el apagón global (bot_status) y la pausa de este
         // chat, sea manual, por reserva o por pago. En todos los casos el mensaje se

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { botInstanceId, esReservas, filtroInstancia, aInternacional, formatoLocal, numeroReservas } = require('./instancia');
+const { botInstanceId, esReservas, filtroInstancia, aInternacional, formatoLocal, numeroReservas, esNumeroDeBot } = require('./instancia');
 
 function conEnv(vars, fn) {
   const antes = {};
@@ -29,4 +29,16 @@ test('los números se pasan a 58… y se dictan como 0424 274 5891', () => {
   assert.equal(aInternacional('4242745891'), '584242745891');
   assert.equal(formatoLocal('584242745891'), '0424 274 5891');
   conEnv({ NUMERO_RESERVAS: undefined }, () => assert.equal(numeroReservas(), '584242745891'));
+});
+
+test('reconoce los dos números de bot para no responderse entre ellos', () => {
+  conEnv({ NUMERO_RESERVAS: undefined, NUMERO_INFORMACION_GENERAL: undefined }, () => {
+    assert.equal(esNumeroDeBot('584242745891'), true);
+    assert.equal(esNumeroDeBot('584242745897'), true);
+    assert.equal(esNumeroDeBot('04242745891'), true);
+    assert.equal(esNumeroDeBot('584121110000'), false);
+    assert.equal(esNumeroDeBot(''), false);
+    assert.equal(esNumeroDeBot(undefined), false);
+  });
+  conEnv({ NUMERO_RESERVAS: '04141234567' }, () => assert.equal(esNumeroDeBot('584141234567'), true));
 });

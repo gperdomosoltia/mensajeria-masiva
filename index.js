@@ -28,6 +28,7 @@ const { crearRegistroDeEnviosPropios, crearCapturaDeAsesor } = require('./servic
 const { esComprobante } = require('./services/payment.detector.js');
 const { botInstanceId, esReservas, aInternacional, esNumeroDeBot } = require('./services/instancia.js');
 const { textoDelAviso } = require('./services/avisosReserva.js');
+const { MOTIVO_PAUSA_FUERA_DE_PLAZO } = require('./services/clases.js');
 const { createConversation, appendItem } = require('./services/ai/conversations.js');
 
 // whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
@@ -597,6 +598,11 @@ if (esReservas()) {
 
         const enviado = await enviarMensajeWhatsapp(jid, aviso.texto);
         if (enviado !== true) return res.status(502).json({ success: false, error: 'envio_fallido' });
+
+        // Una reserva fuera de plazo pausa el chat mientras el equipo decide. Con el aviso
+        // de la decisión el bot vuelve a atender; cualquier otra pausa se deja como está.
+        const reanudado = await mongoController.resumeBotForUser(jid.split('@')[0], { soloMotivo: MOTIVO_PAUSA_FUERA_DE_PLAZO });
+        if (reanudado.resumed) console.log(`▶️ ${jid.split('@')[0]}: el equipo decidió la reserva fuera de plazo; el bot vuelve a atender.`);
 
         const ahora = new Date();
         await mongoController.logHistory({

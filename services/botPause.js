@@ -102,6 +102,13 @@ function crearControlDePausa({ BotPause, botInstanceId } = {}) {
         if (!userId) return { resumed: false, reason: 'sin_usuario' };
         const force = options.force === true;
         try {
+            // `soloMotivo` levanta la pausa solo si es de ese motivo: así, por ejemplo,
+            // decidir una reserva fuera de plazo no reanuda un chat pausado por un pago.
+            if (options.soloMotivo) {
+                const vigente = await getBotPause(userId);
+                if (!vigente) return { resumed: false, reason: 'sin_pausa' };
+                if (vigente.reason !== options.soloMotivo) return { resumed: false, reason: 'otro_motivo' };
+            }
             if (!force) {
                 const vigente = await getBotPause(userId);
                 if (vigente && vigente.manual === true) {

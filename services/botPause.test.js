@@ -168,3 +168,32 @@ test('con instancia, la pausa se busca y se guarda solo para ese número', async
   await general.getBotPause('584121110000');
   assert.deepEqual(filtros[0], { user: '584121110000', botInstanceId: { $in: ['nexus_general', null] } });
 });
+
+test('reanudar con soloMotivo levanta solo la pausa de ese motivo', async () => {
+  const BotPause = fakeBotPause({ user: '584121110000', until: EN_UNA_HORA(), reason: 'reserva_fuera_de_plazo', manual: false });
+  const { resumeBotForUser } = crearControlDePausa({ BotPause });
+
+  const resultado = await resumeBotForUser('584121110000', { soloMotivo: 'reserva_fuera_de_plazo' });
+
+  assert.equal(resultado.resumed, true);
+});
+
+test('reanudar con soloMotivo no toca una pausa de otro motivo', async () => {
+  const BotPause = fakeBotPause({ user: '584121110000', until: EN_UNA_HORA(), reason: 'pago_comprobante', manual: false });
+  const { resumeBotForUser } = crearControlDePausa({ BotPause });
+
+  const resultado = await resumeBotForUser('584121110000', { soloMotivo: 'reserva_fuera_de_plazo' });
+
+  assert.equal(resultado.resumed, false);
+  assert.equal(resultado.reason, 'otro_motivo');
+});
+
+test('reanudar con soloMotivo sin pausa vigente no hace nada', async () => {
+  const BotPause = fakeBotPause();
+  const { resumeBotForUser } = crearControlDePausa({ BotPause });
+
+  const resultado = await resumeBotForUser('584121110000', { soloMotivo: 'reserva_fuera_de_plazo' });
+
+  assert.equal(resultado.resumed, false);
+  assert.equal(resultado.reason, 'sin_pausa');
+});

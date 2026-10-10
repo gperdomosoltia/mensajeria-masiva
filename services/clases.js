@@ -159,6 +159,8 @@ const ERROR_TECNICO = { resultado: 'error' };
 // La clase empieza enseguida: si nadie del equipo la toma en media hora, el bot vuelve a
 // atender en vez de dejar a la persona sin respuesta.
 const PAUSA_RESERVA_FUERA_DE_PLAZO_HORAS = 0.5;
+// Con este motivo se reconoce la pausa al levantarla cuando el equipo decide (index.js).
+const MOTIVO_PAUSA_FUERA_DE_PLAZO = 'reserva_fuera_de_plazo';
 
 // Con solo `puedeReservarAhora: false` el modelo cerraba la puerta ("ya no la puedo
 // pedir") aunque el prompt dijera que ofreciera el asesor. La instrucción va pegada a la
@@ -261,7 +263,7 @@ function crearToolsDeClases({ cliente, findSubscription, updateSubscription, pau
         if (r.data.resultado === 'pendiente_fuera_de_plazo') {
             if (typeof pausarConversacion === 'function') {
                 try {
-                    await pausarConversacion(telefono, PAUSA_RESERVA_FUERA_DE_PLAZO_HORAS, 'reserva_fuera_de_plazo');
+                    await pausarConversacion(telefono, PAUSA_RESERVA_FUERA_DE_PLAZO_HORAS, MOTIVO_PAUSA_FUERA_DE_PLAZO);
                 } catch (err) {
                     console.error(`❌ [CLASES] No se pudo pausar la conversación de ${telefono}:`, err?.message || err);
                 }
@@ -295,6 +297,7 @@ function crearToolsDeClases({ cliente, findSubscription, updateSubscription, pau
 module.exports = {
     crearClienteClases,
     crearToolsDeClases,
+    MOTIVO_PAUSA_FUERA_DE_PLAZO,
     resolverClase,
     coincideClase,
     normalizarHora,

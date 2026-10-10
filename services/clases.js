@@ -156,6 +156,8 @@ function crearClienteClases({ fetch, baseUrl = process.env.DASHBOARD_BASE_URL, s
 
 const ERROR_TECNICO = { resultado: 'error' };
 
+const PAUSA_RESERVA_FUERA_DE_PLAZO_HORAS = 0.5;
+
 function horasDeAnticipacion(minutos) {
     const m = Number(minutos);
     if (!Number.isFinite(m) || m <= 0) return null;
@@ -192,7 +194,10 @@ function avisoReservaFueraDePlazo({ resultado, titular, participante, telefono, 
         fecha: sesion.fecha || '',
         hora: sesion.hora || '',
         telefono: rawUserId || telefono,
-        skip_pause: false
+        skip_pause: false,
+        // La clase es para dentro de poco: si el asesor no la toma en media hora, el bot
+        // vuelve a atender en vez de dejar a la persona sin respuesta.
+        pause_hours: PAUSA_RESERVA_FUERA_DE_PLAZO_HORAS
     };
 }
 

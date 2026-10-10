@@ -164,7 +164,10 @@ function createNotifier({ client, mongoose, pauseBotForUser, MessageMedia, envia
       console.log(`[HANDLE_NOTIFICATION] skip_pause: no se toca la pausa existente de ${datos.telefono}.`);
     } else if (result && datos.telefono && typeof pauseBotForUser === 'function') {
       try {
-        const pausa = await pauseBotForUser(datos.telefono, undefined, `notificacion_${tipo.toLowerCase()}`);
+        // `pause_hours` deja que un aviso pida su propia duración (p. ej. una reserva
+        // fuera de plazo, que es para hoy); sin él se usa BOT_PAUSE_HOURS.
+        const horas = Number(payload.pause_hours) > 0 ? Number(payload.pause_hours) : undefined;
+        const pausa = await pauseBotForUser(datos.telefono, horas, `notificacion_${tipo.toLowerCase()}`);
         pausedUntil = pausa?.until || null;
         if (pausedUntil) console.log(`[HANDLE_NOTIFICATION] Bot pausado para ${datos.telefono} hasta ${pausedUntil.toISOString()}`);
       } catch (err) {

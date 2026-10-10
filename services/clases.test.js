@@ -131,6 +131,7 @@ test('dentro del plazo y con cupo, avisa al asesor con los datos y le pasa la co
   assert.equal(aviso.fecha, '2026-10-10');
   assert.equal(aviso.hora, '11:00');
   assert.equal(aviso.skip_pause, false, 'la conversación se pausa para que la atienda el asesor');
+  assert.equal(aviso.pause_hours, 0.5, 'media hora: la reserva es para dentro de poco');
   assert.match(aviso.descripcion, /Vicmar Luis/);
   assert.match(aviso.descripcion, /V-12345678/);
   assert.match(aviso.descripcion, /24 h/);

@@ -20,16 +20,16 @@ function clienteFalso({ sesiones = SESIONES, semanaPublicada = true, reservar = 
   };
 }
 
-function tools({ cliente = clienteFalso(), subscription = { cedula: 'V-12345678', titularReserva: {} }, avisoOk = true } = {}) {
+function tools({ cliente = clienteFalso(), subscription = { cedula: 'V-12345678', titularReserva: {} } } = {}) {
   const actualizaciones = [];
-  const avisos = [];
+  const pausas = [];
   const t = crearToolsDeClases({
     cliente,
     findSubscription: async () => subscription,
     updateSubscription: async (user, data) => { actualizaciones.push(data); },
-    notificarAsesor: async (payload) => { avisos.push(payload); return { result: avisoOk }; }
+    pausarConversacion: async (telefono, horas, motivo) => { pausas.push({ telefono, horas, motivo }); }
   });
-  return { ...t, cliente, actualizaciones, avisos };
+  return { ...t, cliente, actualizaciones, pausas };
 }
 
 const CHAT = { telefono: '584121234567', rawUserId: '584121234567@c.us', userName: 'Mari' };
@@ -123,59 +123,20 @@ test('reservar para la titular usa la cédula registrada y guarda su nombre', as
   assert.deepEqual(t.actualizaciones, [{ titularReserva: { nombre: 'María', apellido: 'Gómez' } }]);
 });
 
-const FUERA_DE_PLAZO = {
-  resultado: 'fuera_de_ventana',
-  anticipacionMinutos: 1440,
-  alternativas: [],
-  sesion: { sessionId: 'e'.repeat(24), clase: 'Bike', modalidad: null, fecha: '2026-10-10', hora: '11:00', cuposDisponibles: 14 }
-};
-
-test('dentro del plazo y con cupo, avisa al asesor con los datos y le pasa la conversación', async () => {
-  const t = tools({ cliente: clienteFalso({ reservar: FUERA_DE_PLAZO }) });
-  const r = await t.reservarCupo({ sessionId: 'e'.repeat(24), participante: 'titular', nombre: 'Vicmar', apellido: 'Luis' }, CHAT);
+test('una solicitud fuera de plazo pausa la conversación media hora y la deja al equipo', async () => {
+  const reservar = { resultado: 'pendiente_fuera_de_plazo', reservationId: 'r9', anticipacionMinutos: 1440, sesion: { clase: 'Pilates', fecha: '2026-10-10', hora: '12:00' } };
+  const t = tools({ cliente: clienteFalso({ reservar }) });
+  const r = await t.reservarCupo({ sessionId: 'e'.repeat(24), participante: 'titular', nombre: 'Emilio', apellido: 'Blanco' }, CHAT);
   assert.equal(r.resultado, 'derivada_a_asesor');
-  assert.equal(t.avisos.length, 1);
-  const aviso = t.avisos[0];
-  assert.equal(aviso.tipo_notificacion, 'RESERVA');
-  assert.equal(aviso.telefono, '584121234567@c.us');
-  assert.equal(aviso.servicio, 'Bike');
-  assert.equal(aviso.fecha, '2026-10-10');
-  assert.equal(aviso.hora, '11:00');
-  assert.equal(aviso.skip_pause, false, 'la conversación se pausa para que la atienda el asesor');
-  assert.equal(aviso.pause_hours, 0.5, 'media hora: la reserva es para dentro de poco');
-  assert.match(aviso.descripcion, /Vicmar Luis/);
-  assert.match(aviso.descripcion, /V-12345678/);
-  assert.match(aviso.descripcion, /24 h/);
+  assert.deepEqual(t.pausas, [{ telefono: '584121234567', horas: 0.5, motivo: 'reserva_fuera_de_plazo' }]);
 });
 
-test('dentro del plazo para un invitado, el aviso lleva los datos del invitado', async () => {
-  const t = tools({ cliente: clienteFalso({ reservar: FUERA_DE_PLAZO }), subscription: { cedula: 'V-12345678', titularReserva: { nombre: 'Vicmar', apellido: 'Luis' } } });
-  const r = await t.reservarCupo({ sessionId: 'e'.repeat(24), participante: 'invitado', nombre: 'Karelis', apellido: 'Manzano', cedula: '87654321' }, CHAT);
-  assert.equal(r.resultado, 'derivada_a_asesor');
-  assert.match(t.avisos[0].descripcion, /Karelis Manzano/);
-  assert.match(t.avisos[0].descripcion, /invitad/);
-});
-
-test('dentro del plazo pero sin cupo, no molesta al asesor', async () => {
-  const llena = { ...FUERA_DE_PLAZO, sesion: { ...FUERA_DE_PLAZO.sesion, cuposDisponibles: 0 } };
-  const t = tools({ cliente: clienteFalso({ reservar: llena }) });
-  const r = await t.reservarCupo({ sessionId: 'e'.repeat(24), participante: 'titular', nombre: 'Vicmar', apellido: 'Luis' }, CHAT);
+test('fuera de plazo y sin cupo no pausa nada', async () => {
+  const reservar = { resultado: 'fuera_de_ventana', anticipacionMinutos: 1440, alternativas: [], sesion: { cuposDisponibles: 0 } };
+  const t = tools({ cliente: clienteFalso({ reservar }) });
+  const r = await t.reservarCupo({ sessionId: 'e'.repeat(24), participante: 'titular', nombre: 'Emilio', apellido: 'Blanco' }, CHAT);
   assert.equal(r.resultado, 'fuera_de_ventana');
-  assert.equal(t.avisos.length, 0);
-});
-
-test('si el dashboard no dice los cupos, avisa igual: el asesor decide', async () => {
-  const { sesion, ...sinSesion } = FUERA_DE_PLAZO;
-  const t = tools({ cliente: clienteFalso({ reservar: sinSesion }) });
-  const r = await t.reservarCupo({ sessionId: 'e'.repeat(24), participante: 'titular', nombre: 'Vicmar', apellido: 'Luis' }, CHAT);
-  assert.equal(r.resultado, 'derivada_a_asesor');
-  assert.equal(t.avisos.length, 1);
-});
-
-test('si el aviso al asesor falla, el modelo recibe un error en vez de prometer contacto', async () => {
-  const t = tools({ cliente: clienteFalso({ reservar: FUERA_DE_PLAZO }), avisoOk: false });
-  const r = await t.reservarCupo({ sessionId: 'e'.repeat(24), participante: 'titular', nombre: 'Vicmar', apellido: 'Luis' }, CHAT);
-  assert.equal(r.resultado, 'error');
+  assert.equal(t.pausas.length, 0);
 });
 
 test('un nombre de relleno como "Cliente" no cuenta: usa el del contacto', async () => {

@@ -201,6 +201,19 @@ function avisoReservaFueraDePlazo({ resultado, titular, participante, telefono, 
     };
 }
 
+// Con solo `puedeReservarAhora: false` el modelo cerraba la puerta ("ya no la puedo
+// pedir") aunque el prompt dijera que ofreciera el asesor. La instrucción va pegada a la
+// sesión, que es lo que el modelo lee al decidir.
+const SI_LA_QUIERE_IGUAL = 'Empieza antes de la anticipación mínima, así que tú no puedes solicitarla, pero tiene cupo: '
+    + 'ofrécele pasarle la solicitud a un asesor, que revisa si puede reservarla a mano. Si acepta, pide los datos '
+    + 'como siempre y llama a reservar_cupo_clase con este sessionId; el sistema avisa al asesor.';
+
+function conOpcionDeAsesor(sesion) {
+    if (sesion.motivoBloqueo !== 'fuera_de_ventana') return sesion;
+    if (typeof sesion.cuposDisponibles === 'number' && sesion.cuposDisponibles <= 0) return sesion;
+    return { ...sesion, siLaQuiereIgual: SI_LA_QUIERE_IGUAL };
+}
+
 function crearToolsDeClases({ cliente, findSubscription, updateSubscription, notificarAsesor }) {
     async function consultarHorarios(args = {}) {
         const fecha = String(args.fecha || '').trim();
@@ -215,7 +228,7 @@ function crearToolsDeClases({ cliente, findSubscription, updateSubscription, not
         if (!respuesta.semanaPublicada) return { ...respuesta, sesiones: [] };
 
         const objetivo = resolverClase(args.clase, args.modalidad);
-        const deLaClase = todas.filter(s => coincideClase(s, objetivo));
+        const deLaClase = todas.filter(s => coincideClase(s, objetivo)).map(conOpcionDeAsesor);
         const hora = normalizarHora(args.hora);
         const aEsaHora = hora ? deLaClase.filter(s => s.hora === hora) : deLaClase;
 

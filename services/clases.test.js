@@ -76,6 +76,17 @@ test('consultar_horarios: una sesión sin modalidad aparece al buscar cualquier 
   assert.deepEqual(xtreme.sesiones.map(s => s.sessionId), ['e'.repeat(24)], 'la de Training Bike sigue sin colarse');
 });
 
+test('consultar_horarios: dentro del plazo con cupo, le dice al modelo que puede pasarla a un asesor', async () => {
+  const sesiones = [
+    { sessionId: 'e'.repeat(24), clase: 'Pilates', modalidad: null, fecha: '2026-10-10', hora: '12:00', cuposDisponibles: 8, puedeReservarAhora: false, motivoBloqueo: 'fuera_de_ventana' },
+    { sessionId: 'f'.repeat(24), clase: 'Pilates', modalidad: null, fecha: '2026-10-10', hora: '18:00', cuposDisponibles: 0, puedeReservarAhora: false, motivoBloqueo: 'sin_cupo' }
+  ];
+  const r = await tools({ cliente: clienteFalso({ sesiones }) }).consultarHorarios({ fecha: '2026-10-10', clase: 'pilates' });
+  assert.match(r.sesiones[0].siLaQuiereIgual, /asesor/);
+  assert.match(r.sesiones[0].siLaQuiereIgual, /reservar_cupo_clase/);
+  assert.equal(r.sesiones[1].siLaQuiereIgual, undefined, 'una clase llena no se ofrece al asesor');
+});
+
 test('consultar_horarios: sin sesión a esa hora devuelve las de la clase con una nota', async () => {
   const r = await tools().consultarHorarios({ fecha: '2026-09-29', clase: 'pilates', hora: '9 am' });
   assert.equal(r.sesiones.length, 1);

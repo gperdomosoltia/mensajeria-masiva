@@ -98,6 +98,27 @@ test('reservar para la titular usa la cédula registrada y guarda su nombre', as
   assert.deepEqual(t.actualizaciones, [{ titularReserva: { nombre: 'María', apellido: 'Gómez' } }]);
 });
 
+test('un nombre de relleno como "Cliente" no cuenta: usa el del contacto', async () => {
+  const t = tools();
+  await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'titular', nombre: 'Cliente', apellido: 'Blanco' }, CHAT);
+  const [, body] = t.cliente.llamadas[0];
+  assert.deepEqual(body.titular, { nombre: 'Mari', apellido: 'Blanco', cedula: 'V-12345678' });
+});
+
+test('sin nombre real de la titular ni del contacto, lo pide en vez de reservar', async () => {
+  const t = tools({ subscription: { cedula: 'V-12345678', titularReserva: { nombre: 'Cliente', apellido: 'Blanco' } } });
+  const r = await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'titular', nombre: 'cliente', apellido: 'Blanco' }, { ...CHAT, userName: 'Usuario' });
+  assert.equal(r.resultado, 'falta_datos_titular');
+  assert.equal(t.cliente.llamadas.length, 0);
+});
+
+test('un invitado con nombre de relleno se pide de nuevo', async () => {
+  const t = tools({ subscription: { cedula: 'V-12345678', titularReserva: { nombre: 'María', apellido: 'Gómez' } } });
+  const r = await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'invitado', nombre: 'Invitado', apellido: 'Pérez', cedula: 'V-23456789' }, CHAT);
+  assert.equal(r.resultado, 'falta_datos_invitado');
+  assert.equal(t.cliente.llamadas.length, 0);
+});
+
 test('reservar sin cédula de la titular no llama al dashboard', async () => {
   const t = tools({ subscription: { cedula: null } });
   const r = await t.reservarCupo({ sessionId: 'a'.repeat(24), participante: 'titular', nombre: 'María', apellido: 'Gómez' }, CHAT);

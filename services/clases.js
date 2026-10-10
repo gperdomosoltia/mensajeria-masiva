@@ -18,6 +18,24 @@ function normalizarTexto(valor) {
         .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Lo que el modelo escribe cuando no tiene el dato (el esquema de la tool exige nombre y
+// apellido, así que a veces rellena) y el "Usuario" que pone index.js si el contacto no
+// tiene nombre. Ninguno es un nombre: se trata como si faltara.
+const NOMBRES_DE_RELLENO = new Set([
+    'cliente', 'el cliente', 'la cliente', 'usuario', 'usuaria', 'sin nombre', 'nombre', 'apellido',
+    'titular', 'invitado', 'invitada', 'desconocido', 'desconocida', 'n a', 'na', 'no aplica', 'x'
+]);
+
+// Devuelve el primer valor que sea un nombre de verdad, o '' si ninguno lo es.
+function primerNombreReal(...valores) {
+    for (const valor of valores) {
+        const texto = String(valor ?? '').trim();
+        const normalizado = normalizarTexto(texto);
+        if (normalizado && !NOMBRES_DE_RELLENO.has(normalizado)) return texto;
+    }
+    return '';
+}
+
 // Cómo llama la gente a cada clase → cómo está cargada en el dashboard. El filtro de
 // la API es exacto, así que "spinning" o "crossfit" no encontrarían nada sin esto.
 const ALIAS_CLASES = [
@@ -182,8 +200,8 @@ function crearToolsDeClases({ cliente, findSubscription, updateSubscription }) {
 
         const guardado = subscription?.titularReserva || {};
         const titular = {
-            nombre: String(args.titular_nombre || (!esInvitado && args.nombre) || guardado.nombre || userName || '').trim(),
-            apellido: String(args.titular_apellido || (!esInvitado && args.apellido) || guardado.apellido || '').trim()
+            nombre: primerNombreReal(args.titular_nombre, esInvitado ? null : args.nombre, guardado.nombre, userName),
+            apellido: primerNombreReal(args.titular_apellido, esInvitado ? null : args.apellido, guardado.apellido)
         };
         if (!titular.nombre || !titular.apellido) {
             return { resultado: 'falta_datos_titular', mensaje: 'Pide nombre y apellido de quien escribe y vuelve a llamar con titular_nombre y titular_apellido.' };
@@ -199,8 +217,8 @@ function crearToolsDeClases({ cliente, findSubscription, updateSubscription }) {
             const normalizada = normalizarCedula(crudo);
             participante = {
                 tipo: 'invitado',
-                nombre: String(args.nombre || '').trim(),
-                apellido: String(args.apellido || '').trim(),
+                nombre: primerNombreReal(args.nombre),
+                apellido: primerNombreReal(args.apellido),
                 cedula: normalizada.ok ? normalizada.valor : crudo
             };
             if (!participante.nombre || !participante.apellido) {

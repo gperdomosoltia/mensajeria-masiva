@@ -169,7 +169,14 @@ const SI_LA_QUIERE_IGUAL = 'Empieza antes de la anticipación mínima, así que 
     + 'ofrécele pasarle la solicitud a un asesor, que revisa si puede reservarla a mano. Si acepta, pide los datos '
     + 'como siempre y llama a reservar_cupo_clase con este sessionId; el sistema le pasa la solicitud al equipo.';
 
+// Pilates, Stretching y Bike solo se reservan dentro de las 24 h previas. Sin esto el
+// modelo podía tratarlo como "llena" u ofrecer la lista de espera.
+const CUANDO_ABRE = 'Esta clase se reserva solo dentro de las 24 horas antes de que empiece, y todavía falta para eso: '
+    + 'no la puedes solicitar ni anotar en lista de espera. Dile desde cuándo puede pedirla (abreReservas, hora de '
+    + 'Venezuela) y que te escriba a partir de ese momento.';
+
 function conOpcionDeAsesor(sesion) {
+    if (sesion.motivoBloqueo === 'aun_no_abre') return { ...sesion, cuandoAbre: CUANDO_ABRE };
     if (sesion.motivoBloqueo !== 'fuera_de_ventana') return sesion;
     if (typeof sesion.cuposDisponibles === 'number' && sesion.cuposDisponibles <= 0) return sesion;
     return { ...sesion, siLaQuiereIgual: SI_LA_QUIERE_IGUAL };

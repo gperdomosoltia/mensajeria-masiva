@@ -87,6 +87,16 @@ test('consultar_horarios: dentro del plazo con cupo, le dice al modelo que puede
   assert.equal(r.sesiones[1].siLaQuiereIgual, undefined, 'una clase llena no se ofrece al asesor');
 });
 
+test('consultar_horarios: una clase que todavía no abre dice desde cuándo, sin asesor', async () => {
+  const sesiones = [
+    { sessionId: 'e'.repeat(24), clase: 'Pilates', modalidad: null, fecha: '2026-10-12', hora: '09:30', cuposDisponibles: 8, puedeReservarAhora: false, motivoBloqueo: 'aun_no_abre', abreReservas: '2026-10-11 09:30' }
+  ];
+  const r = await tools({ cliente: clienteFalso({ sesiones }) }).consultarHorarios({ fecha: '2026-10-12', clase: 'pilates' });
+  assert.match(r.sesiones[0].cuandoAbre, /24 horas/);
+  assert.equal(r.sesiones[0].abreReservas, '2026-10-11 09:30');
+  assert.equal(r.sesiones[0].siLaQuiereIgual, undefined);
+});
+
 test('consultar_horarios: sin sesión a esa hora devuelve las de la clase con una nota', async () => {
   const r = await tools().consultarHorarios({ fecha: '2026-09-29', clase: 'pilates', hora: '9 am' });
   assert.equal(r.sesiones.length, 1);

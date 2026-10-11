@@ -1,6 +1,6 @@
 // Avisos al cliente cuando el equipo resuelve una reserva desde el dashboard.
 //
-// Los textos son fijos (prompts/CAMBIOS-RESERVAS.md, punto 6): el modelo no participa,
+// Los textos son fijos (docs/cambios/CAMBIOS-RESERVAS.md, punto 6): el modelo no participa,
 // así que ni inventa un estado ni se le escapa un motivo interno. `motivo` solo cambia
 // el texto si es "sin_cupo"; la nota interna del asesor nunca llega hasta acá.
 // Ninguno empieza con "No" ni habla de "humano", igual que el prompt.

@@ -18,10 +18,11 @@ const TOOL_REGISTRAR_CEDULA = {
   description: [
     'Guarda la cédula o el RIF de la persona que escribe, que es como se le identifica.',
     'LLÁMALA EN CUANTO te dé el número, dentro del flujo de reserva, inscripción o pago.',
-    'Manda el valor tal como lo dijo, con su letra si la dio.',
-    'El sistema te responde si quedó guardada: si dice que falta el tipo, pregúntale si',
-    'es V o E y vuelve a llamarla con la letra; si dice que el formato no sirve, pídele',
-    'que lo repita. Nunca le pidas una foto del documento, solo el número.',
+    'Manda el valor tal como lo dijo, con su letra si la dio. No le preguntes si es V o E:',
+    'sin letra el sistema la guarda como V; solo si la persona dice que es extranjera, manda E.',
+    'El sistema te responde si quedó guardada: si dice que falta la letra (un RIF), pregúntasela',
+    'y vuelve a llamarla; si dice que el formato no sirve, pídele que lo repita.',
+    'Nunca le pidas una foto del documento, solo el número.',
     'Nunca la uses para la cédula de un invitado.',
     NO_ANUNCIES
   ].join(' '),

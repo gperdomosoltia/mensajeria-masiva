@@ -61,7 +61,7 @@ function lineaFechaActual(ahora = new Date()) {
 // ---------- tools (ejecutores; los schemas están en ./tools.js) ----------
 
 const MENSAJES_CEDULA = {
-  falta_tipo: 'Falta saber si es V (venezolano) o E (extranjero). Pregúntaselo con naturalidad y vuelve a llamarme con la letra.',
+  falta_tipo: 'Nueve dígitos sin letra es un RIF y falta su letra (J, V, E, G o P). Pregúntasela con naturalidad y vuelve a llamarme con ella.',
   formato: 'Ese valor no tiene forma de cédula ni de RIF. Pídele que lo repita, sin insistir si no quiere darlo.',
   vacio: 'No llegó ningún número. Pídeselo al cliente.',
   sin_usuario: 'No se pudo identificar el chat; sigue la conversación sin pedirlo de nuevo.',
@@ -128,15 +128,16 @@ async function exec_registrar_cedula({ rawUserId, argsJSON }) {
       mensaje: 'Cédula guardada. Sigue con naturalidad; no repitas el número ni lo confirmes dos veces.'
     });
   }
-  // Con falta_tipo se devuelve el número que ya dio: si no, cuando la persona contesta
-  // solo "V", el modelo a veces le vuelve a pedir la cédula completa.
+  // Con falta_tipo (solo un RIF sin letra: la cédula sin letra se toma como V) se
+  // devuelve el número que ya dio: si no, cuando la persona contesta solo "J", el modelo
+  // a veces le vuelve a pedir el número completo.
   const numero = r.motivo === 'falta_tipo' ? String(valor).replace(/\D/g, '') : undefined;
   return JSON.stringify({
     status: 'error',
     motivo: r.motivo,
     numero,
     mensaje: r.motivo === 'falta_tipo'
-      ? `Falta saber si es V (venezolano) o E (extranjero). Pregúntaselo con naturalidad; cuando conteste, vuelve a llamarme con la letra y este mismo número (ej. "V-${numero}"), sin pedirle el número otra vez.`
+      ? `Nueve dígitos sin letra es un RIF y falta su letra (J, V, E, G o P). Pregúntasela con naturalidad; cuando conteste, vuelve a llamarme con la letra y este mismo número (ej. "J-${numero}"), sin pedirle el número otra vez.`
       : (MENSAJES_CEDULA[r.motivo] || 'No se pudo guardar.')
   });
 }

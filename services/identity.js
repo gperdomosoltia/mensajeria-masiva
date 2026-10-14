@@ -28,9 +28,12 @@ function normalizarCedula(valor) {
         return { ok: true, valor: `${letra}-${digitos}`, tipo: 'cedula' };
     }
 
-    // Solo números: NO se asume V. Un extranjero con cédula E quedaría mal guardado, y
-    // este valor va a ser la llave con la que se crucen los pagos.
-    if (/^\d{6,9}$/.test(limpio)) return { ok: false, motivo: 'falta_tipo' };
+    // Solo números de cédula: se asume V. Antes se preguntaba V o E y al cliente le
+    // molestaba (2026-10-14); un extranjero que lo dice o escribe la E queda bien arriba.
+    if (/^\d{6,8}$/.test(limpio)) return { ok: true, valor: `V-${limpio}`, tipo: 'cedula' };
+
+    // Nueve dígitos sin letra es un RIF, y ahí la letra sí importa: J no es V.
+    if (/^\d{9}$/.test(limpio)) return { ok: false, motivo: 'falta_tipo' };
 
     return { ok: false, motivo: 'formato' };
 }

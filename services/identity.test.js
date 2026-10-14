@@ -27,10 +27,19 @@ test('un RIF de nueve dígitos se separa con su dígito verificador', () => {
   assert.equal(normalizarCedula('G200012345').valor, 'G-20001234-5');
 });
 
-test('solo dígitos NO se asume V: hay que preguntar el tipo', () => {
-  // Un extranjero con cédula E quedaría mal guardado si adivinamos, y este valor va a
-  // ser la llave del cobro automatizado.
-  const r = normalizarCedula('12345678');
+test('una cédula de solo dígitos se toma como V', () => {
+  // Preguntar V o E le molestaba al cliente (2026-10-14): el extranjero lo dice él.
+  for (const entrada of ['12345678', '12.345.678', '1234567', '123456']) {
+    const r = normalizarCedula(entrada);
+    assert.equal(r.ok, true, `debería aceptar ${entrada}`);
+    assert.equal(r.valor, `V-${entrada.replace(/\D/g, '')}`);
+    assert.equal(r.tipo, 'cedula');
+  }
+});
+
+test('un RIF de nueve dígitos sin letra sí pide la letra', () => {
+  // J no es V: ahí adivinar sí deja un cobro que no cuadra.
+  const r = normalizarCedula('123456789');
   assert.equal(r.ok, false);
   assert.equal(r.motivo, 'falta_tipo');
 });
@@ -78,7 +87,7 @@ test('no escribe nada si el valor no sirve', async () => {
   const Subscription = fakeSubscription();
   const { guardarCedula } = crearRegistroDeCedula({ Subscription });
 
-  const r = await guardarCedula({ user: '584121112233', cedula: '12345678', origen: 'cliente' });
+  const r = await guardarCedula({ user: '584121112233', cedula: '123456789', origen: 'cliente' });
 
   assert.equal(r.ok, false);
   assert.equal(r.motivo, 'falta_tipo');

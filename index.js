@@ -30,6 +30,7 @@ const { botInstanceId, esReservas, aInternacional, esNumeroDeBot } = require('./
 const { textoDelAviso } = require('./services/avisosReserva.js');
 const { MOTIVO_PAUSA_FUERA_DE_PLAZO } = require('./services/clases.js');
 const { createConversation, appendItem } = require('./services/ai/conversations.js');
+const { crearEstadoConexion, enlaceVinculacion } = require('./services/estadoConexion.js');
 
 // whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
 // llama `await this.inject()` sin try/catch en cada navegación de la página.
@@ -83,6 +84,17 @@ app.use(morgan('dev'));
 app.use('/media', express.static(PUBLIC_IMAGE_DIR));
 
 let currentQR = null;
+const estadoConexion = crearEstadoConexion();
+
+// Lo consulta el dashboard cada minuto para avisar cuando el número quedó desvinculado.
+app.get('/estado', requireApiKey, (req, res) => {
+    res.json({
+        success: true,
+        botInstanceId: botInstanceId(),
+        ...estadoConexion.leer(),
+        enlaceVinculacion: enlaceVinculacion()
+    });
+});
 
 // --- Rutas Web (QR) ---
 app.get('/', async (req, res) => {
@@ -173,6 +185,7 @@ let watchdog = setTimeout(() => {
 
 client.on('qr', qr => {
     currentQR = qr;
+    estadoConexion.marcar('esperando_qr');
     console.log('🔍 QR Recibido. Escanéalo en el navegador.');
     clearTimeout(watchdog);
     watchdog = setTimeout(() => {
@@ -183,6 +196,7 @@ client.on('qr', qr => {
 client.on('ready', () => {
     clearTimeout(watchdog);
     currentQR = null;
+    estadoConexion.marcar('conectado');
     console.log('✅ WhatsApp Conectado y Listo.');
     // Las campañas viven en una colección compartida: si las dos instancias las
     // procesaran, cada cliente recibiría cada mensaje dos veces. Solo las manda el

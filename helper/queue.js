@@ -6,6 +6,7 @@ const { createConversation } = require('../services/ai/conversations');
 const { respondWithConversation } = require('../services/ai/respond');
 const { botInstanceId } = require('../services/instancia');
 const { crearDerivaciones, formatearContexto } = require('../services/derivaciones');
+const { avisarSiSinCreditos } = require('../services/alertaSinCreditos');
 const Derivacion = require('../models/derivacionModel');
 
 const derivaciones = crearDerivaciones({ Derivacion });
@@ -113,6 +114,8 @@ async function processUserQueueInternal(userId, userName, onQueueProcessedCallba
         
     } catch (error) {
         console.error(`❌ Error procesando la cola para ${userId}:`, error);
+        // Sin saldo en OpenAI fallan todos los mensajes: aviso por Slack, una vez al día.
+        avisarSiSinCreditos(error);
         await mongoController.updateHistoryEntry(historyEntryId, { status: 'webhook_failed' });
         if (onQueueProcessedCallback) {
             await onQueueProcessedCallback(rawUserId, null, historyEntryId, error);

@@ -104,4 +104,4 @@ function crearAlertaSinCreditos({
     };
 }
 
-module.exports = { esSinCreditos, fechaVenezuela, textoAviso, crearAlertaSinCreditos, avisarSiSinCreditos: crearAlertaSinCreditos() };
+module.exports = { esSinCreditos, fechaVenezuela, textoAviso, publicarEnSlack, crearAlertaSinCreditos, avisarSiSinCreditos: crearAlertaSinCreditos() };

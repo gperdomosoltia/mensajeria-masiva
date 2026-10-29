@@ -26,11 +26,12 @@ const { crearServicioPagos } = require('./services/payment.service.js');
 const { crearEntregaDeRespuesta } = require('./services/replyDelivery.js');
 const { crearRegistroDeEnviosPropios, crearCapturaDeAsesor } = require('./services/agentCapture.js');
 const { esComprobante } = require('./services/payment.detector.js');
-const { botInstanceId, esReservas, aInternacional, esNumeroDeBot } = require('./services/instancia.js');
+const { botInstanceId, esReservas, aInternacional, esNumeroDeBot, INSTANCIA_GENERAL, INSTANCIA_RESERVAS, numeroReservas, numeroInformacionGeneral } = require('./services/instancia.js');
 const { textoDelAviso } = require('./services/avisosReserva.js');
 const { MOTIVO_PAUSA_FUERA_DE_PLAZO } = require('./services/clases.js');
 const { createConversation, appendItem } = require('./services/ai/conversations.js');
 const { crearEstadoConexion, enlaceVinculacion } = require('./services/estadoConexion.js');
+const { crearLatido } = require('./services/latido.js');
 
 // whatsapp-web.js registra un listener 'framenavigated' (src/Client.js) que
 // llama `await this.inject()` sin try/catch en cada navegación de la página.
@@ -198,6 +199,7 @@ client.on('ready', () => {
     currentQR = null;
     estadoConexion.marcar('conectado');
     console.log('✅ WhatsApp Conectado y Listo.');
+    latido.iniciar();
     // Las campañas viven en una colección compartida: si las dos instancias las
     // procesaran, cada cliente recibiría cada mensaje dos veces. Solo las manda el
     // número general.
@@ -214,6 +216,12 @@ client.on('ready', () => {
     }, 60000); // 60000 ms = 10 minutos
     
     console.log('📢 Sistema de Marketing Automático iniciado.');
+});
+
+// Sin esto, un corte de la conexión de WhatsApp Web no deja rastro en los logs: el 28/10
+// el general pasó 14 h sin recibir nada y no hubo una sola línea que dijera por qué.
+client.on('change_state', (estado) => {
+    console.log('🔄 Estado de WhatsApp Web:', estado);
 });
 
 client.on('disconnected', (reason) => {
@@ -302,6 +310,17 @@ const registrarCaso = crearServicioPagos({
 // `pago_pendiente` cuando el cliente avisa por texto que va a pagar o pide los datos.
 setPagoRegistrar(registrarCaso);
 
+// Latido con el otro bot: detecta cuando este número deja de recibir mensajes aunque
+// figure vinculado, y avisa por Slack (services/latido.js).
+const latido = crearLatido({
+    instancia: botInstanceId(),
+    otraInstancia: esReservas() ? INSTANCIA_GENERAL : INSTANCIA_RESERVAS,
+    numeroOtro: esReservas() ? numeroInformacionGeneral() : numeroReservas(),
+    enviar: (numero, texto) => client.sendMessage(`${numero}@c.us`, texto),
+    consultarEstado: () => client.getState(),
+    activo: () => estadoConexion.leer().estado === 'conectado'
+});
+
 // --- Manejador de Mensajes ---
 const processingUsers = new Set();
 const startTimestamp = Math.floor(Date.now() / 1000);
@@ -312,6 +331,8 @@ client.on('message', async msg => {
     if (msg.from === 'status@broadcast') return;
     // Los canales (@newsletter) no son conversaciones: getChat() revienta con ellos.
     if (msg.from.endsWith('@newsletter')) return;
+    // Los latidos del otro bot no son de un cliente: ni OpenAI ni historial.
+    if (msg.type === 'chat' && await latido.registrarRecibido(msg.body)) return;
     console.log("Entrando a mensajes: ", msg.from);
 
     const allowedTypes = ['chat', 'ptt', 'audio', 'image', 'location'];

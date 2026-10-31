@@ -166,12 +166,22 @@ client.on('qr', qr => {
     }, READY_TIMEOUT_MS);
 });
 
+// WhatsApp Web reemite 'ready' en cada reconexión interna; sin esta guarda
+// se acumulaba un setInterval nuevo por cada una (visto: 7 ciclos por minuto).
+let marketingInterval = null;
+
 client.on('ready', () => {
     clearTimeout(watchdog);
     currentQR = null;
     console.log('✅ WhatsApp Conectado y Listo.');
+    // CAMPAIGNS_ENABLED=false apaga el marketing en bots que no lo usan.
+    if (process.env.CAMPAIGNS_ENABLED === 'false') {
+        console.log('📢 Marketing Automático desactivado (CAMPAIGNS_ENABLED=false).');
+        return;
+    }
+    if (marketingInterval) return;
     // Aquí eliminamos initCronJobs()
-    setInterval(async () => {
+    marketingInterval = setInterval(async () => {
         try {
             await processActiveCampaigns(client);
         } catch (e) {
